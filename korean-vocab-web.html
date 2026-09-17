@@ -1,0 +1,2137 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>단어장 · Học từ vựng tiếng Hàn</title>
+<meta name="description" content="Hoc tu vung tieng Han: chon danh muc truoc, sau do vao hoc." />
+<style>
+  html, body, #root { height: 100%; margin: 0; padding: 0; background: #1C2128; }
+  body { -webkit-font-smoothing: antialiased; }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// Real-website replacement for the Claude-artifact "window.storage" API,
+// backed by the browser's own localStorage so progress is saved on THIS device.
+window.storage = {
+  async get(key, shared) {
+    const raw = localStorage.getItem("kv_" + key);
+    if (raw === null) return null;
+    return { key, value: raw, shared: !!shared };
+  },
+  async set(key, value, shared) {
+    localStorage.setItem("kv_" + key, value);
+    return { key, value, shared: !!shared };
+  },
+  async delete(key, shared) {
+    localStorage.removeItem("kv_" + key);
+    return { key, deleted: true, shared: !!shared };
+  },
+  async list(prefix) {
+    const keys = Object.keys(localStorage)
+      .filter((k) => k.startsWith("kv_" + (prefix || "")))
+      .map((k) => k.slice(3));
+    return { keys };
+  },
+};
+</script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback } = React;
+function Volume2({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Data: intermediate+ Korean vocabulary, grouped by theme
+// ---------------------------------------------------------------------------
+const CATEGORIES = [
+  { id: "emotion", label: "감정과 성격", sub: "Cảm xúc & tính cách", subEn: "Emotions & personality" },
+  { id: "social", label: "관계와 사회", sub: "Quan hệ & xã hội", subEn: "Relationships & society" },
+  { id: "work", label: "직장과 업무", sub: "Công việc", subEn: "Work" },
+  { id: "news", label: "시사와 뉴스", sub: "Thời sự", subEn: "Current affairs" },
+  { id: "daily", label: "일상 심화", sub: "Đời sống nâng cao", subEn: "Advanced daily life" },
+  { id: "topik2", label: "토픽 필수 어휘", sub: "TOPIK II thiết yếu", subEn: "TOPIK II essentials" },
+  { id: "it", label: "IT 실무 용어", sub: "Từ vựng IT Comtor", subEn: "IT / Comtor vocabulary" },
+  { id: "econ", label: "경제와 정치", sub: "Kinh tế & chính trị (TOPIK 6)", subEn: "Economy & politics (TOPIK 6)" },
+  { id: "science", label: "과학과 기술", sub: "Khoa học & công nghệ (TOPIK 6)", subEn: "Science & technology (TOPIK 6)" },
+  { id: "culture", label: "문화와 예술", sub: "Văn hóa & nghệ thuật (TOPIK 6)", subEn: "Culture & art (TOPIK 6)" },
+  { id: "environment", label: "환경과 건강", sub: "Môi trường & sức khỏe (TOPIK 6)", subEn: "Environment & health (TOPIK 6)" },
+];
+
+// English translations, in the exact same order as SEED_WORDS below
+// [meaning_en, example_meaning_en]
+const EN_TRANSLATIONS = [
+  // emotion (8)
+  ["a sense of accomplishment", "He achieved his goal and felt a great sense of accomplishment."],
+  ["consideration, thoughtfulness", "Being considerate of friends is important."],
+  ["sensitive, easily irritated", "I've become sensitive lately because of stress."],
+  ["to feel hurt, disappointed", "I felt hurt because he forgot his promise."],
+  ["to feel frustrated, stifled", "I feel frustrated because we can't communicate."],
+  ["to feel proud, fulfilled", "Seeing my child grow up makes me feel proud."],
+  ["timid, shy", "He tends to be quite timid."],
+  ["relaxed, leisurely", "I spend my weekends in a relaxed way."],
+  // social (8)
+  ["conflict", "A conflict arose between the two people."],
+  ["communication", "Communication between spouses is important."],
+  ["trust", "Building trust takes time."],
+  ["prejudice", "One should treat people without prejudice."],
+  ["betrayal", "I was deeply hurt by my friend's betrayal."],
+  ["a sense of bonding", "A sense of bonding formed among the team members."],
+  ["empathy", "I empathized with her story."],
+  ["social tact, perceptiveness", "Perceptive people tend to be good at social life."],
+  // work (8)
+  ["working overtime", "I've been working overtime a lot lately."],
+  ["work, duties", "You need to focus during work hours."],
+  ["promotion", "I finally got promoted this time."],
+  ["negotiation", "The price negotiation wasn't easy."],
+  ["sense of responsibility", "You should work with a sense of responsibility."],
+  ["deadline", "The report deadline is tomorrow."],
+  ["results, achievement", "We achieved good results in this project."],
+  ["resigning, quitting a job", "He suddenly decided to quit his job."],
+  // news (8)
+  ["public opinion", "Public opinion on this policy is negative."],
+  ["economic conditions", "Economic conditions are getting worse."],
+  ["prices, cost of living", "Prices keep rising."],
+  ["countermeasure", "The government needs to prepare countermeasures."],
+  ["controversy", "That remark caused a big controversy."],
+  ["regulation", "New regulations have been implemented."],
+  ["unemployment rate", "The unemployment rate hit a record high."],
+  ["reorganization", "An organizational reorganization took place."],
+  // daily (8)
+  ["cumbersome, troublesome", "The procedure is too cumbersome."],
+  ["unintentionally, absentmindedly", "I was hurt by a careless remark someone made unintentionally."],
+  ["belatedly", "Regretting belatedly is useless."],
+  ["suddenly, out of the blue", "Old memories suddenly came to mind."],
+  ["no wonder", "No wonder his expression looked off."],
+  ["at least, fortunately still", "At least that's a relief."],
+  ["if at all possible", "I try to hold back if at all possible."],
+  ["almost, nearly", "I nearly fell down."],
+  // topik2 (40)
+  ["still", "He is still working in the same position."],
+  ["finally, at last", "I finally passed the exam."],
+  ["rather, on the contrary", "I thought it would be hard, but it was rather fun."],
+  ["rather, would rather", "I'd rather go alone."],
+  ["moreover, besides", "It rained, and besides, the wind blew hard."],
+  ["anyway, either way", "We're late anyway, so let's go slowly."],
+  ["on the other hand", "The older brother is lively, while the younger one is quiet."],
+  ["therefore", "Prices rose. Therefore, sales decreased."],
+  ["that is, namely", "He is my older brother, that is, the eldest son."],
+  ["statistics", "According to statistics, the population is decreasing."],
+  ["ratio, proportion", "The proportion of women is gradually increasing."],
+  ["increase", "The number of tourists has increased."],
+  ["decrease", "The birth rate is decreasing."],
+  ["improvement", "I'm working hard to improve my skills."],
+  ["improvement", "The work environment needs improvement."],
+  ["resolution, solving", "A meeting was held to solve the problem."],
+  ["cause", "The cause of the accident is under investigation."],
+  ["influence, effect", "Weather affects health."],
+  ["attitude", "I don't like his attitude."],
+  ["condition", "We signed a contract with good conditions."],
+  ["phenomenon", "The abnormal climate phenomenon continues."],
+  ["characteristic, feature", "Please explain the characteristics of this region."],
+  ["factor", "The factors of success are diverse."],
+  ["standard, criteria", "The passing standard is strict."],
+  ["challenge", "I want to take on a new challenge."],
+  ["overcoming", "I succeeded by overcoming difficulties."],
+  ["continuation, persistence", "If this situation continues, it's dangerous."],
+  ["spread", "The rumor spread quickly."],
+  ["dissemination, spread", "The spread of smartphones has expanded."],
+  ["response, coping", "We must respond swiftly to the crisis."],
+  ["implementation", "The new system will be implemented next month."],
+  ["to take into account", "Let's decide by taking the situation into account."],
+  ["to consider", "Various opinions must be considered."],
+  ["to commit (a mistake)", "I ended up making a mistake."],
+  ["to cause, bring about", "That decision caused great losses."],
+  ["to prepare, arrange", "We need to prepare a plan for old age."],
+  ["to regard as, consider", "I consider him a friend."],
+  ["to be revealed", "The truth was revealed."],
+  ["to support, back up", "Data supporting the theory is needed."],
+  ["to be called, referred to as", "This is commonly referred to as love."],
+  // it (100)
+  ["requirement", "We organized the client's requirements."],
+  ["specification document", "We need to write the functional specification."],
+  ["planning document", "We're reviewing the new project's planning document."],
+  ["screen / UI design", "We need to finalize the screen design first."],
+  ["bug", "I fixed the bug."],
+  ["error", "A system error occurred."],
+  ["fix, modification", "Please fix the code."],
+  ["deployment", "We deployed the new version."],
+  ["testing", "You must pass testing before deployment."],
+  ["inspection, quality check", "Inspection is conducted before delivery."],
+  ["delivery (of goods)", "Delivery is scheduled for this week."],
+  ["maintenance", "We signed a maintenance contract."],
+  ["meeting minutes", "Please share the meeting minutes."],
+  ["schedule", "The schedule is being delayed."],
+  ["deadline", "The deadline must be met."],
+  ["backlog", "We organized the backlog."],
+  ["sprint", "We set the goal for this sprint."],
+  ["version / configuration control", "We use Git as our version control tool."],
+  ["source code", "I reviewed the source code."],
+  ["refactoring", "The code needs refactoring."],
+  ["server", "The server went down."],
+  ["database", "We backed up the database."],
+  ["frontend", "We're hiring a frontend developer."],
+  ["backend", "I fixed the backend logic."],
+  ["user interface (UI)", "The user interface is intuitive."],
+  ["integration", "We integrated it with the payment system."],
+  ["incident, failure", "An incident occurred overnight."],
+  ["issue", "Please log the issue."],
+  ["person in charge", "Who is in charge of this task?"],
+  ["quotation, estimate", "I'll send you the quotation."],
+  ["contract", "We need to check the contract terms."],
+  ["handover", "The handover must be finished before leaving the company."],
+  ["deliverable", "The deliverable must be submitted."],
+  ["quality assurance (QA)", "The QA team conducts the testing."],
+  ["interpretation", "I was in charge of interpretation at the meeting."],
+  ["translation", "I translated the document into Korean."],
+  ["video conference", "We'll proceed via video conference."],
+  ["report", "I wrote the weekly report."],
+  ["client", "We reflected the client's feedback."],
+  ["specification (spec)", "We need to check the server specs."],
+  ["architecture", "We designed the system architecture."],
+  ["framework", "We use the React framework."],
+  ["library", "We installed the required library."],
+  ["algorithm", "We applied an efficient algorithm."],
+  ["function", "This function returns a value."],
+  ["variable", "Variable names should be clear."],
+  ["class", "We implemented it by inheriting a class."],
+  ["object", "I'm learning object-oriented programming."],
+  ["inheritance", "It inherits from the parent class."],
+  ["compile", "I compiled the code."],
+  ["debugging", "Debugging took a lot of time."],
+  ["log", "I checked the log to find the cause."],
+  ["cache", "The cache needs to be cleared."],
+  ["traffic", "Traffic surged suddenly."],
+  ["cloud", "We moved to a cloud server."],
+  ["container", "We ran a Docker container."],
+  ["virtualization", "We adopted server virtualization."],
+  ["endpoint", "We added a new endpoint."],
+  ["request", "We sent a request to the server."],
+  ["response", "The response time is slow."],
+  ["authentication", "Login authentication failed."],
+  ["permission", "Admin permission is required."],
+  ["encryption", "We encrypt the data before storing it."],
+  ["backup", "We back up daily."],
+  ["recovery", "We recovered the system."],
+  ["monitoring", "We monitor server status."],
+  ["notification", "I received an error notification."],
+  ["dashboard", "We check metrics on the dashboard."],
+  ["workflow", "We improved the workflow."],
+  ["automation", "We automated the testing."],
+  ["pipeline", "We built a deployment pipeline."],
+  ["configuration", "We changed the server configuration."],
+  ["branch", "I created a new branch."],
+  ["merge", "I merged the code."],
+  ["conflict (merge conflict)", "A merge conflict occurred."],
+  ["commit", "I committed the changes."],
+  ["reviewer", "I reflected the reviewer's feedback."],
+  ["ticket", "I created a ticket."],
+  ["priority", "We need to set priorities."],
+  ["progress", "I reported the progress."],
+  ["on hold", "This task is on hold."],
+  ["approval", "I got approval from my boss."],
+  ["rejection", "The proposal was rejected."],
+  ["rework", "Rework is needed."],
+  ["performance", "Performance needs to be improved."],
+  ["optimization", "I optimized the query."],
+  ["scalability", "The system has good scalability."],
+  ["stability", "Service stability is important."],
+  ["vulnerability", "We patched the vulnerability."],
+  ["patch", "We applied a security patch."],
+  ["update", "I updated the app to the latest version."],
+  ["open source", "We used an open-source library."],
+  ["user experience (UX)", "We improved the user experience."],
+  ["responsive web", "We built it as a responsive website."],
+  ["query", "I wrote a complex query."],
+  ["table (database)", "I created a new table."],
+  ["index", "I added an index to speed things up."],
+  ["transaction", "The transaction processing failed."],
+  ["module", "We separated it into a common module."],
+  ["schema", "We designed the database schema."],
+  // econ (30)
+  ["economic growth", "This year's economic growth rate has slowed."],
+  ["trade", "The two countries signed a trade agreement."],
+  ["exports", "Semiconductor exports have increased."],
+  ["imports", "The cost of importing raw materials has risen."],
+  ["tariff", "They decided to raise tariffs."],
+  ["exchange rate", "Exchange rate fluctuations are severe."],
+  ["interest rate", "The central bank raised interest rates."],
+  ["inflation", "Inflation is worsening."],
+  ["(government) finances", "Government finances have worsened."],
+  ["budget", "The defense budget has increased."],
+  ["tax", "The tax burden has grown."],
+  ["welfare", "Welfare policy has been expanded."],
+  ["policy", "A new policy was announced."],
+  ["ruling party", "The ruling party proposed the bill."],
+  ["opposition party", "The opposition party strongly protested."],
+  ["election", "The presidential election is approaching."],
+  ["voter turnout", "Voter turnout was lower than expected."],
+  ["diplomacy", "The two countries restored diplomatic relations."],
+  ["cooperation", "The two countries strengthened economic cooperation."],
+  ["sanctions", "The international community imposed sanctions."],
+  ["dispute", "The territorial dispute continues."],
+  ["treaty", "They signed a peace treaty."],
+  ["constitution", "Constitutional amendment is being discussed."],
+  ["bill (legislation)", "The bill passed the National Assembly."],
+  ["election pledge", "I looked into the candidate's pledges."],
+  ["approval rating", "The president's approval rating has dropped."],
+  ["protest", "A large-scale protest was held."],
+  ["corruption", "Corruption is a serious problem."],
+  ["gap, disparity", "The wealth gap has worsened."],
+  ["low birth rate", "Solving the low birth rate problem is urgent."],
+  // science (25)
+  ["research", "We are researching a new vaccine."],
+  ["experiment", "The experiment results differed from expectations."],
+  ["hypothesis", "We verified the hypothesis."],
+  ["theory", "A new theory has emerged."],
+  ["artificial intelligence (AI)", "AI technology is advancing."],
+  ["robot", "Robots are taking over human jobs."],
+  ["gene", "Genetically modified crops are controversial."],
+  ["cell", "We suppressed the growth of cancer cells."],
+  ["space, universe", "Space exploration has become more active."],
+  ["satellite", "They launched an artificial satellite."],
+  ["nuclear power", "They built a nuclear power plant."],
+  ["renewable energy", "The share of renewable energy is increasing."],
+  ["global warming", "Global warming is serious."],
+  ["invention", "They invented a new technology."],
+  ["patent", "They filed a patent application."],
+  ["commercialization", "The commercialization of the technology was accelerated."],
+  ["self-driving, autonomous driving", "They tested a self-driving car."],
+  ["big data", "They analyzed big data to make predictions."],
+  ["Internet of Things (IoT)", "IoT technology is spreading."],
+  ["nanotechnology", "Nanotechnology is used in medicine."],
+  ["new material", "They developed a new material."],
+  ["vaccine", "The vaccination rate has risen."],
+  ["infectious disease", "The infectious disease spread quickly."],
+  ["immunity", "We're looking for ways to boost immunity."],
+  ["convergence", "Technological convergence creates new industries."],
+  // culture (25)
+  ["tradition", "We must carry on tradition."],
+  ["custom", "Customs differ by region."],
+  ["heritage", "Cultural heritage must be preserved."],
+  ["exhibition", "An art exhibition was held."],
+  ["performance", "A free performance is underway."],
+  ["creation (of a work)", "I created a new work."],
+  ["work (of art)", "His work received great acclaim."],
+  ["appreciation", "I enjoy appreciating music."],
+  ["expression", "The way people express emotions differs."],
+  ["symbol", "This painting symbolizes peace."],
+  ["aesthetics", "I'm very interested in Eastern aesthetics."],
+  ["popular / mass culture", "The influence of popular culture has grown."],
+  ["generation gap", "There's conflict due to the generation gap."],
+  ["identity", "Cultural identity must be preserved."],
+  ["diversity", "Cultural diversity must be respected."],
+  ["incorporation, integration", "It was incorporated into the new culture."],
+  ["distortion", "History has been distorted."],
+  ["adaptation", "The novel was adapted into a film."],
+  ["direction (directing)", "He directed this film."],
+  ["immersion", "I was immersed in the story."],
+  ["lingering impression", "The lingering impression remained even after the film ended."],
+  ["climax", "The story reached its climax."],
+  ["critique, criticism", "I read a film critique."],
+  ["satire", "This is a work that satirizes society."],
+  ["transmission (of tradition)", "This is a story passed down orally."],
+  // environment (25)
+  ["pollution", "Air pollution is serious."],
+  ["fine dust", "Fine dust levels are high."],
+  ["greenhouse gas", "We need to reduce greenhouse gas emissions."],
+  ["recycling", "We recycle plastic."],
+  ["extinction", "Many animals are facing extinction."],
+  ["ecosystem", "Destruction of the ecosystem is concerning."],
+  ["climate change", "We need to respond to climate change."],
+  ["drought", "The drought was severe this year."],
+  ["flood", "We suffered great damage from the flood."],
+  ["heat wave", "A heat wave warning was issued."],
+  ["immune resistance", "My immune resistance has weakened."],
+  ["nutrition", "Balanced nutrition intake is important."],
+  ["disease", "I'm suffering from a chronic disease."],
+  ["symptom", "The symptoms are getting worse."],
+  ["diagnosis", "An accurate diagnosis is needed."],
+  ["treatment", "Continuous treatment is needed."],
+  ["prevention", "Disease prevention is best."],
+  ["sleep", "Enough sleep is good for health."],
+  ["stress", "Managing stress is important."],
+  ["aging", "There are ways to slow aging."],
+  ["obesity", "Obesity is the cause of many diseases."],
+  ["physical strength, stamina", "I exercise to build stamina."],
+  ["disaster", "We must prepare for natural disasters."],
+  ["sustainability", "Sustainable development is needed."],
+  ["eco-friendly", "I prefer eco-friendly products."],
+];
+
+const SEED_WORDS = [
+  ["emotion","성취감","seongchwigam","cảm giác thành tựu","그는 목표를 이루고 큰 성취감을 느꼈다.","Anh ấy đạt được mục tiêu và cảm thấy thành tựu lớn."],
+  ["emotion","배려","baeryeo","sự quan tâm, chu đáo","친구를 배려하는 마음이 중요하다.","Tấm lòng quan tâm đến bạn bè rất quan trọng."],
+  ["emotion","예민하다","yeminhada","nhạy cảm, dễ bị kích động","요즘 스트레스 때문에 예민해졌다.","Dạo này vì stress nên trở nên nhạy cảm."],
+  ["emotion","서운하다","seounhada","buồn tủi, chạnh lòng","약속을 잊어버려서 서운했어요.","Vì quên lời hứa nên tôi thấy chạnh lòng."],
+  ["emotion","답답하다","dapdaphada","ngột ngạt, bức bối","말이 안 통해서 답답해요.","Vì nói chuyện không hiểu nhau nên thấy bức bối."],
+  ["emotion","뿌듯하다","pputeuthada","tự hào, mãn nguyện","아이가 성장하는 걸 보니 뿌듯하다.","Nhìn con lớn lên mà thấy tự hào."],
+  ["emotion","소심하다","sosimhada","nhút nhát, rụt rè","그는 성격이 소심한 편이다.","Anh ấy có tính cách khá nhút nhát."],
+  ["emotion","여유롭다","yeoyuropda","thong thả, ung dung","주말엔 여유롭게 시간을 보낸다.","Cuối tuần tôi dành thời gian thong thả."],
+  ["social","갈등","galdeung","xung đột, mâu thuẫn","두 사람 사이에 갈등이 생겼다.","Giữa hai người nảy sinh mâu thuẫn."],
+  ["social","소통","sotong","giao tiếp, thông hiểu nhau","부부 사이에 소통이 중요하다.","Giao tiếp giữa vợ chồng rất quan trọng."],
+  ["social","신뢰","silloe","sự tin tưởng","신뢰를 쌓는 데 시간이 걸린다.","Xây dựng lòng tin cần có thời gian."],
+  ["social","편견","pyeongyeon","định kiến","편견 없이 사람을 대해야 한다.","Cần đối xử với người khác không định kiến."],
+  ["social","배신","baesin","sự phản bội","친구의 배신에 큰 상처를 받았다.","Bị tổn thương lớn vì sự phản bội của bạn."],
+  ["social","유대감","yudaegam","sự gắn kết","팀원들 사이에 유대감이 생겼다.","Giữa các thành viên nảy sinh sự gắn kết."],
+  ["social","공감","gonggam","sự đồng cảm","그녀의 이야기에 공감이 갔다.","Tôi đồng cảm với câu chuyện của cô ấy."],
+  ["social","눈치","nunchi","sự nhạy bén, tinh ý","눈치가 빠른 사람이 사회생활을 잘한다.","Người tinh ý thường giỏi giao tiếp xã hội."],
+  ["work","야근","yageun","làm thêm giờ, tăng ca","요즘 야근이 잦아졌다.","Dạo này tăng ca thường xuyên hơn."],
+  ["work","업무","eommu","công việc, nhiệm vụ","업무 시간에 집중해야 한다.","Cần tập trung trong giờ làm việc."],
+  ["work","승진","seungjin","thăng chức","이번에 드디어 승진했다.","Lần này cuối cùng cũng được thăng chức."],
+  ["work","협상","hyeopsang","đàm phán","가격 협상이 쉽지 않았다.","Đàm phán giá cả không hề dễ dàng."],
+  ["work","책임감","chaegimgam","tinh thần trách nhiệm","책임감을 가지고 일해야 한다.","Cần làm việc với tinh thần trách nhiệm."],
+  ["work","마감","magam","hạn chót","보고서 마감이 내일이다.","Hạn chót nộp báo cáo là ngày mai."],
+  ["work","성과","seonggwa","thành quả, kết quả","이번 프로젝트에서 좋은 성과를 냈다.","Đạt được thành quả tốt trong dự án lần này."],
+  ["work","퇴사","toesa","nghỉ việc","그는 갑자기 퇴사를 결심했다.","Anh ấy đột nhiên quyết định nghỉ việc."],
+  ["news","여론","yeoron","dư luận","이번 정책에 대한 여론이 나쁘다.","Dư luận về chính sách lần này khá tiêu cực."],
+  ["news","경기","gyeonggi","tình hình kinh tế","경기가 점점 나빠지고 있다.","Tình hình kinh tế đang ngày càng xấu đi."],
+  ["news","물가","mulga","vật giá","물가가 계속 오르고 있다.","Vật giá đang tiếp tục tăng."],
+  ["news","대책","daechaek","biện pháp đối phó","정부는 대책을 마련해야 한다.","Chính phủ cần chuẩn bị biện pháp đối phó."],
+  ["news","논란","nollan","tranh cãi","그 발언이 큰 논란을 일으켰다.","Phát ngôn đó gây ra tranh cãi lớn."],
+  ["news","규제","gyuje","quy định, sự quản chế","새로운 규제가 시행되었다.","Quy định mới đã được thi hành."],
+  ["news","실업률","sireomnyul","tỷ lệ thất nghiệp","실업률이 최고치를 기록했다.","Tỷ lệ thất nghiệp đạt mức cao kỷ lục."],
+  ["news","개편","gaepyeon","cải tổ, tái cơ cấu","조직 개편이 이루어졌다.","Việc cải tổ tổ chức đã diễn ra."],
+  ["daily","번거롭다","beongeoropda","phiền phức, rắc rối","절차가 너무 번거롭다.","Thủ tục quá phiền phức."],
+  ["daily","무심코","musimko","vô tình, không chủ ý","무심코 던진 말에 상처를 받았다.","Bị tổn thương vì câu nói buột miệng vô tình."],
+  ["daily","뒤늦게","dwineutge","muộn màng, trễ","뒤늦게 후회해도 소용없다.","Hối hận muộn màng cũng vô ích."],
+  ["daily","문득","mundeuk","chợt, bỗng nhiên","문득 옛 생각이 났다.","Bỗng nhiên nhớ lại chuyện xưa."],
+  ["daily","어쩐지","eojjeonji","thảo nào, chả trách","어쩐지 표정이 안 좋더라.","Thảo nào sắc mặt không tốt."],
+  ["daily","그나마","geunama","dù sao thì cũng còn","그나마 다행이다.","Dù sao thì cũng còn may mắn."],
+  ["daily","웬만하면","wenmanhamyeon","nếu có thể thì","웬만하면 참으려고 한다.","Nếu có thể được thì tôi cố nhịn."],
+  ["daily","하마터면","hamateomyeon","suýt chút nữa","하마터면 넘어질 뻔했다.","Suýt chút nữa thì bị ngã."],
+  // ---- TOPIK II thiết yếu -------------------------------------------------
+  ["topik2","여전히","yeojeonhi","vẫn còn, vẫn như cũ","그는 여전히 같은 자리에서 일하고 있다.","Anh ấy vẫn đang làm việc ở vị trí cũ."],
+  ["topik2","마침내","machimnae","cuối cùng, rốt cuộc","마침내 시험에 합격했다.","Cuối cùng đã đỗ kỳ thi."],
+  ["topik2","오히려","ohiryeo","ngược lại, trái lại","힘들 줄 알았는데 오히려 재미있었다.","Tưởng sẽ vất vả nhưng ngược lại lại thấy thú vị."],
+  ["topik2","차라리","charari","thà rằng, chẳng thà","차라리 혼자 가는 게 낫겠다.","Thà đi một mình còn hơn."],
+  ["topik2","게다가","gedaga","hơn nữa, thêm vào đó","비가 오고 게다가 바람도 심하게 불었다.","Trời mưa, hơn nữa gió cũng thổi mạnh."],
+  ["topik2","어차피","eochapi","đằng nào cũng, dù sao thì","어차피 늦었으니 천천히 가자.","Đằng nào cũng muộn rồi, đi từ từ thôi."],
+  ["topik2","반면에","banmyeone","mặt khác, ngược lại","형은 활발한 반면에 동생은 조용하다.","Anh trai hoạt bát, mặt khác em trai lại trầm tính."],
+  ["topik2","따라서","ttaraseo","do đó, vì vậy","가격이 올랐다. 따라서 판매량이 줄었다.","Giá tăng, do đó doanh số giảm."],
+  ["topik2","즉","jeuk","tức là","그는 나의 형, 즉 첫째 아들이다.","Anh ấy là anh trai tôi, tức là con trai cả."],
+  ["topik2","통계","tonggye","thống kê","통계에 따르면 인구가 감소하고 있다.","Theo thống kê, dân số đang giảm."],
+  ["topik2","비율","biyul","tỷ lệ","여성의 비율이 점점 높아지고 있다.","Tỷ lệ nữ giới ngày càng tăng."],
+  ["topik2","증가","jeungga","sự tăng lên","관광객 수가 증가했다.","Số lượng khách du lịch đã tăng lên."],
+  ["topik2","감소","gamso","sự giảm xuống","출산율이 감소하고 있다.","Tỷ lệ sinh đang giảm xuống."],
+  ["topik2","향상","hyangsang","sự nâng cao, cải thiện","실력 향상을 위해 노력하고 있다.","Đang nỗ lực để nâng cao năng lực."],
+  ["topik2","개선","gaeseon","sự cải thiện","근무 환경 개선이 필요하다.","Cần cải thiện môi trường làm việc."],
+  ["topik2","해결","haegyeol","sự giải quyết","문제를 해결하기 위해 회의를 열었다.","Đã tổ chức họp để giải quyết vấn đề."],
+  ["topik2","원인","wonin","nguyên nhân","사고의 원인을 조사하고 있다.","Đang điều tra nguyên nhân vụ tai nạn."],
+  ["topik2","영향","yeonghyang","ảnh hưởng","날씨가 건강에 영향을 미친다.","Thời tiết ảnh hưởng đến sức khỏe."],
+  ["topik2","태도","taedo","thái độ","그의 태도가 마음에 들지 않는다.","Tôi không thích thái độ của anh ta."],
+  ["topik2","조건","jogeon","điều kiện","좋은 조건으로 계약을 맺었다.","Đã ký hợp đồng với điều kiện tốt."],
+  ["topik2","현상","hyeonsang","hiện tượng","이상 기후 현상이 계속되고 있다.","Hiện tượng khí hậu bất thường vẫn tiếp diễn."],
+  ["topik2","특징","teukjing","đặc trưng, đặc điểm","이 지역의 특징을 설명해 주세요.","Hãy giải thích đặc điểm của khu vực này."],
+  ["topik2","요인","yoin","yếu tố","성공의 요인은 다양하다.","Yếu tố thành công rất đa dạng."],
+  ["topik2","기준","gijun","tiêu chuẩn","합격 기준이 까다롭다.","Tiêu chuẩn đỗ khá khắt khe."],
+  ["topik2","도전","dojeon","sự thử thách","새로운 일에 도전하고 싶다.","Tôi muốn thử thách với công việc mới."],
+  ["topik2","극복","geukbok","sự vượt qua","어려움을 극복하고 성공했다.","Đã vượt qua khó khăn để thành công."],
+  ["topik2","지속","jisok","sự duy trì, tiếp diễn","이 상태가 지속되면 위험하다.","Nếu tình trạng này tiếp diễn thì nguy hiểm."],
+  ["topik2","확산","hwaksan","sự lan rộng","소문이 빠르게 확산되었다.","Tin đồn đã lan rộng nhanh chóng."],
+  ["topik2","보급","bogeup","sự phổ biến, cung cấp","스마트폰의 보급이 확대되었다.","Việc phổ biến smartphone đã mở rộng."],
+  ["topik2","대응","daeeung","sự đối phó, ứng phó","위기에 신속히 대응해야 한다.","Cần ứng phó nhanh chóng với khủng hoảng."],
+  ["topik2","실시","silsi","sự thực thi","새 제도가 다음 달부터 실시된다.","Chế độ mới sẽ được thực thi từ tháng sau."],
+  ["topik2","감안하다","gamanhada","cân nhắc, xét đến","상황을 감안해서 결정하자.","Hãy quyết định dựa trên việc cân nhắc tình hình."],
+  ["topik2","고려하다","goryeohada","xem xét, cân nhắc","여러 의견을 고려해야 한다.","Cần xem xét nhiều ý kiến."],
+  ["topik2","저지르다","jeojireuda","phạm phải (lỗi)","실수를 저지르고 말았다.","Đã lỡ phạm phải sai lầm."],
+  ["topik2","초래하다","choraehada","gây ra, dẫn đến","그 결정이 큰 손실을 초래했다.","Quyết định đó đã gây ra tổn thất lớn."],
+  ["topik2","마련하다","maryeonhada","chuẩn bị, sắp xếp","노후 대책을 마련해야 한다.","Cần chuẩn bị kế hoạch cho tuổi già."],
+  ["topik2","여기다","yeogida","coi là, xem như","그를 친구로 여긴다.","Tôi coi anh ấy là bạn."],
+  ["topik2","드러나다","deureonada","lộ ra, bộc lộ","진실이 드러났다.","Sự thật đã lộ ra."],
+  ["topik2","뒷받침하다","dwitbatchimhada","hậu thuẫn, làm chỗ dựa","이론을 뒷받침하는 자료가 필요하다.","Cần tài liệu hậu thuẫn cho lý thuyết."],
+  ["topik2","일컫다","ilkeotda","gọi là, gọi tên","이것을 흔히 사랑이라 일컫는다.","Cái này thường được gọi là tình yêu."],
+  // ---- IT Comtor -----------------------------------------------------------
+  ["it","요구사항","yogusahang","yêu cầu (requirement)","고객의 요구사항을 정리했다.","Đã tổng hợp yêu cầu của khách hàng."],
+  ["it","명세서","myeongseseo","tài liệu đặc tả (spec)","기능 명세서를 작성해야 한다.","Cần viết tài liệu đặc tả chức năng."],
+  ["it","기획서","gihoekseo","tài liệu kế hoạch (planning doc)","새 프로젝트 기획서를 검토 중이다.","Đang xem xét tài liệu kế hoạch dự án mới."],
+  ["it","화면 설계","hwamyeon seolgye","thiết kế màn hình (UI design)","화면 설계를 먼저 확정해야 한다.","Cần chốt thiết kế màn hình trước."],
+  ["it","버그","beogeu","lỗi (bug)","버그를 수정했다.","Đã sửa lỗi (bug)."],
+  ["it","오류","oryu","lỗi (error)","시스템 오류가 발생했다.","Đã xảy ra lỗi hệ thống."],
+  ["it","수정","sujeong","sự sửa chữa, chỉnh sửa","코드를 수정해 주세요.","Hãy chỉnh sửa đoạn code."],
+  ["it","배포","baepo","triển khai (deploy)","새 버전을 배포했다.","Đã triển khai phiên bản mới."],
+  ["it","테스트","teseuteu","kiểm thử (test)","테스트를 통과해야 배포할 수 있다.","Phải vượt qua kiểm thử mới được deploy."],
+  ["it","검수","geomsu","nghiệm thu, kiểm tra chất lượng","납품 전에 검수를 진행한다.","Tiến hành nghiệm thu trước khi bàn giao."],
+  ["it","납품","napum","bàn giao (sản phẩm)","이번 주에 납품 예정이다.","Dự kiến bàn giao trong tuần này."],
+  ["it","유지보수","yujibosu","bảo trì (maintenance)","유지보수 계약을 맺었다.","Đã ký hợp đồng bảo trì."],
+  ["it","회의록","hoeuirok","biên bản họp","회의록을 공유해 주세요.","Hãy chia sẻ biên bản họp."],
+  ["it","일정","iljeong","lịch trình, tiến độ","일정이 지연되고 있다.","Tiến độ đang bị chậm trễ."],
+  ["it","마감일","magamil","hạn chót (deadline)","마감일을 지켜야 한다.","Phải tuân thủ hạn chót."],
+  ["it","백로그","baengnogeu","backlog","백로그를 정리했다.","Đã sắp xếp lại backlog."],
+  ["it","스프린트","seupeurinteu","sprint (Agile)","이번 스프린트 목표를 정했다.","Đã xác định mục tiêu sprint này."],
+  ["it","형상 관리","hyeongsang gwalli","quản lý cấu hình (version control)","형상 관리 도구로 깃을 사용한다.","Dùng Git làm công cụ quản lý cấu hình."],
+  ["it","소스코드","soseukodeu","mã nguồn","소스코드를 리뷰했다.","Đã review mã nguồn."],
+  ["it","리팩토링","ripaektoring","refactor","코드 리팩토링이 필요하다.","Cần refactor lại code."],
+  ["it","서버","seobeo","server","서버가 다운되었다.","Server bị sập."],
+  ["it","데이터베이스","deiteobeiseu","cơ sở dữ liệu (database)","데이터베이스를 백업했다.","Đã sao lưu cơ sở dữ liệu."],
+  ["it","프론트엔드","peuronteuendeu","frontend","프론트엔드 개발자를 구하고 있다.","Đang tuyển lập trình viên frontend."],
+  ["it","백엔드","baegendeu","backend","백엔드 로직을 수정했다.","Đã sửa logic backend."],
+  ["it","사용자 인터페이스","sayongja inteopeiseu","giao diện người dùng (UI)","사용자 인터페이스가 직관적이다.","Giao diện người dùng trực quan."],
+  ["it","연동","yeondong","tích hợp, liên kết (integration)","결제 시스템과 연동했다.","Đã tích hợp với hệ thống thanh toán."],
+  ["it","장애","jangae","sự cố (incident)","야간에 장애가 발생했다.","Sự cố xảy ra vào ban đêm."],
+  ["it","이슈","isyu","vấn đề (issue)","이슈를 등록해 주세요.","Hãy đăng ký issue."],
+  ["it","담당자","damdangja","người phụ trách","이 업무의 담당자가 누구예요?","Ai là người phụ trách công việc này?"],
+  ["it","견적","gyeonjeok","báo giá","견적서를 보내드리겠습니다.","Tôi sẽ gửi bảng báo giá."],
+  ["it","계약","gyeyak","hợp đồng","계약 조건을 확인해야 한다.","Cần kiểm tra điều khoản hợp đồng."],
+  ["it","인수인계","insuingye","bàn giao công việc","퇴사 전에 인수인계를 마쳐야 한다.","Phải hoàn thành bàn giao trước khi nghỉ việc."],
+  ["it","산출물","sanchulmul","sản phẩm đầu ra (deliverable)","산출물을 제출해야 한다.","Phải nộp sản phẩm đầu ra."],
+  ["it","품질보증","pumjilbojeung","đảm bảo chất lượng (QA)","품질보증팀에서 테스트를 진행한다.","Đội QA tiến hành kiểm thử."],
+  ["it","통역","tongyeok","phiên dịch","회의에서 통역을 담당했다.","Đã phụ trách phiên dịch trong cuộc họp."],
+  ["it","번역","beonyeok","biên dịch","문서를 한국어로 번역했다.","Đã biên dịch tài liệu sang tiếng Hàn."],
+  ["it","화상 회의","hwasang hoeui","họp trực tuyến (video call)","화상 회의로 진행하겠습니다.","Sẽ tiến hành bằng họp trực tuyến."],
+  ["it","보고서","bogoseo","báo cáo","주간 보고서를 작성했다.","Đã viết báo cáo tuần."],
+  ["it","클라이언트","keullaieonteu","khách hàng (client)","클라이언트의 피드백을 반영했다.","Đã phản ánh phản hồi của khách hàng."],
+  ["it","사양","sayang","thông số kỹ thuật (specification)","서버 사양을 확인해야 한다.","Cần kiểm tra thông số kỹ thuật server."],
+  ["it","아키텍처","akitekcheo","kiến trúc hệ thống","시스템 아키텍처를 설계했다.","Đã thiết kế kiến trúc hệ thống."],
+  ["it","프레임워크","peureimwokeu","framework","리액트 프레임워크를 사용한다.","Sử dụng framework React."],
+  ["it","라이브러리","raibeureori","thư viện (code)","필요한 라이브러리를 설치했다.","Đã cài đặt thư viện cần thiết."],
+  ["it","알고리즘","algorijeum","thuật toán","효율적인 알고리즘을 적용했다.","Đã áp dụng thuật toán hiệu quả."],
+  ["it","함수","hamsu","hàm (function)","이 함수는 값을 반환한다.","Hàm này trả về giá trị."],
+  ["it","변수","byeonsu","biến (variable)","변수의 이름을 명확하게 지어야 한다.","Cần đặt tên biến rõ ràng."],
+  ["it","클래스","keullaeseu","lớp (class, OOP)","클래스를 상속받아 구현했다.","Đã kế thừa lớp để triển khai."],
+  ["it","객체","gaekche","đối tượng (object)","객체 지향 프로그래밍을 배운다.","Học lập trình hướng đối tượng."],
+  ["it","상속","sangsok","sự kế thừa (inheritance)","부모 클래스를 상속한다.","Kế thừa từ lớp cha."],
+  ["it","컴파일","keompail","biên dịch (compile)","코드를 컴파일했다.","Đã biên dịch code."],
+  ["it","디버깅","dibeoging","gỡ lỗi (debugging)","디버깅에 많은 시간이 걸렸다.","Việc gỡ lỗi mất nhiều thời gian."],
+  ["it","로그","rogeu","nhật ký (log)","로그를 확인해서 원인을 찾았다.","Đã kiểm tra log để tìm nguyên nhân."],
+  ["it","캐시","kaesi","bộ nhớ đệm (cache)","캐시를 지워야 한다.","Cần xóa bộ nhớ đệm."],
+  ["it","트래픽","teuraepik","lưu lượng truy cập","트래픽이 급증했다.","Lưu lượng truy cập tăng vọt."],
+  ["it","클라우드","keullaudeu","đám mây (cloud)","클라우드 서버로 이전했다.","Đã chuyển sang server đám mây."],
+  ["it","컨테이너","keonteineo","container","도커 컨테이너를 실행했다.","Đã chạy container Docker."],
+  ["it","가상화","gasanghwa","ảo hóa (virtualization)","서버 가상화를 도입했다.","Đã áp dụng ảo hóa server."],
+  ["it","엔드포인트","endeupointeu","điểm cuối API (endpoint)","새 엔드포인트를 추가했다.","Đã thêm endpoint mới."],
+  ["it","요청","yocheong","yêu cầu (request)","요청을 서버에 보냈다.","Đã gửi yêu cầu đến server."],
+  ["it","응답","eungdap","phản hồi (response)","응답 속도가 느리다.","Tốc độ phản hồi chậm."],
+  ["it","인증","injeung","xác thực (authentication)","로그인 인증에 실패했다.","Xác thực đăng nhập thất bại."],
+  ["it","권한","gwonhan","quyền hạn (permission)","관리자 권한이 필요하다.","Cần quyền quản trị viên."],
+  ["it","암호화","amhohwa","mã hóa (encryption)","데이터를 암호화해서 저장한다.","Mã hóa dữ liệu trước khi lưu."],
+  ["it","백업","baegeop","sao lưu (backup)","매일 백업을 진행한다.","Tiến hành sao lưu hàng ngày."],
+  ["it","복구","bokgu","khôi phục (recovery)","시스템을 복구했다.","Đã khôi phục hệ thống."],
+  ["it","모니터링","moniteoring","giám sát (monitoring)","서버 상태를 모니터링한다.","Giám sát trạng thái server."],
+  ["it","알림","allim","thông báo (notification)","오류 알림을 받았다.","Đã nhận thông báo lỗi."],
+  ["it","대시보드","daesibodeu","bảng điều khiển (dashboard)","대시보드에서 지표를 확인한다.","Kiểm tra chỉ số trên dashboard."],
+  ["it","워크플로우","wokeupeullou","quy trình làm việc (workflow)","워크플로우를 개선했다.","Đã cải thiện quy trình làm việc."],
+  ["it","자동화","jadonghwa","tự động hóa (automation)","테스트를 자동화했다.","Đã tự động hóa việc kiểm thử."],
+  ["it","파이프라인","paipeurain","pipeline","배포 파이프라인을 구축했다.","Đã xây dựng pipeline triển khai."],
+  ["it","형상","hyeongsang","cấu hình (configuration)","서버 형상을 변경했다.","Đã thay đổi cấu hình server."],
+  ["it","브랜치","beuraenchi","nhánh (git branch)","새 브랜치를 만들었다.","Đã tạo nhánh mới."],
+  ["it","병합","byeonghap","hợp nhất (merge)","코드를 병합했다.","Đã hợp nhất code."],
+  ["it","충돌","chungdol","xung đột code (conflict)","병합 충돌이 발생했다.","Xảy ra xung đột khi merge."],
+  ["it","커밋","keomit","commit","변경 사항을 커밋했다.","Đã commit các thay đổi."],
+  ["it","리뷰어","ribyueo","người review","리뷰어의 의견을 반영했다.","Đã phản ánh ý kiến của reviewer."],
+  ["it","티켓","tiket","ticket (công việc)","티켓을 생성했다.","Đã tạo ticket."],
+  ["it","우선순위","useonsunwi","độ ưu tiên (priority)","우선순위를 정해야 한다.","Cần xác định độ ưu tiên."],
+  ["it","진척도","jincheokdo","tiến độ (%)","진척도를 보고했다.","Đã báo cáo tiến độ."],
+  ["it","보류","boryu","tạm hoãn (on hold)","이 작업은 보류 상태다.","Công việc này đang ở trạng thái tạm hoãn."],
+  ["it","승인","seungin","phê duyệt (approval)","상사의 승인을 받았다.","Đã nhận được phê duyệt của cấp trên."],
+  ["it","반려","ballyeo","từ chối, trả lại (rejection)","제안서가 반려되었다.","Đề xuất đã bị từ chối."],
+  ["it","재작업","jaejageop","làm lại (rework)","재작업이 필요하다.","Cần làm lại."],
+  ["it","성능","seongneung","hiệu năng (performance)","성능을 개선해야 한다.","Cần cải thiện hiệu năng."],
+  ["it","최적화","choejeokhwa","tối ưu hóa (optimization)","쿼리를 최적화했다.","Đã tối ưu hóa câu truy vấn."],
+  ["it","확장성","hwakjangseong","khả năng mở rộng (scalability)","시스템의 확장성이 좋다.","Hệ thống có khả năng mở rộng tốt."],
+  ["it","안정성","anjeongseong","tính ổn định (stability)","서비스 안정성이 중요하다.","Tính ổn định của dịch vụ rất quan trọng."],
+  ["it","취약점","chwiyakjeom","lỗ hổng bảo mật (vulnerability)","취약점을 패치했다.","Đã vá lỗ hổng bảo mật."],
+  ["it","패치","paechi","bản vá (patch)","보안 패치를 적용했다.","Đã áp dụng bản vá bảo mật."],
+  ["it","업데이트","eopdeiteu","cập nhật (update)","앱을 최신 버전으로 업데이트했다.","Đã cập nhật ứng dụng lên phiên bản mới nhất."],
+  ["it","오픈소스","opeunsoseu","mã nguồn mở (open source)","오픈소스 라이브러리를 활용했다.","Đã sử dụng thư viện mã nguồn mở."],
+  ["it","사용자 경험","sayongja gyeongheom","trải nghiệm người dùng (UX)","사용자 경험을 개선했다.","Đã cải thiện trải nghiệm người dùng."],
+  ["it","반응형 웹","baneunghyeong wep","web đáp ứng (responsive)","반응형 웹으로 제작했다.","Đã thiết kế theo dạng web đáp ứng."],
+  ["it","쿼리","kwori","câu truy vấn (query)","복잡한 쿼리를 작성했다.","Đã viết câu truy vấn phức tạp."],
+  ["it","테이블","teibeul","bảng cơ sở dữ liệu (table)","새 테이블을 생성했다.","Đã tạo bảng mới."],
+  ["it","인덱스","indekseu","chỉ mục (index, DB)","인덱스를 추가해서 속도를 높였다.","Đã thêm chỉ mục để tăng tốc độ."],
+  ["it","트랜잭션","teuraenjaeksyeon","giao dịch DB (transaction)","트랜잭션 처리가 실패했다.","Xử lý giao dịch đã thất bại."],
+  ["it","모듈","modyul","module","공통 모듈로 분리했다.","Đã tách thành module chung."],
+  ["it","스키마","seukima","schema (DB)","데이터베이스 스키마를 설계했다.","Đã thiết kế schema cơ sở dữ liệu."],
+  // ---- 경제와 정치 (Kinh tế & chính trị) — TOPIK 6 -------------------------
+  ["econ","경제성장","gyeongjeseongjang","tăng trưởng kinh tế","올해 경제성장률이 둔화되었다.","Tốc độ tăng trưởng kinh tế năm nay đã chậm lại."],
+  ["econ","무역","muyeok","thương mại","양국은 무역 협정을 체결했다.","Hai nước đã ký kết hiệp định thương mại."],
+  ["econ","수출","suchul","xuất khẩu","반도체 수출이 증가했다.","Xuất khẩu chất bán dẫn đã tăng."],
+  ["econ","수입","suip","nhập khẩu","원자재 수입 비용이 올랐다.","Chi phí nhập khẩu nguyên liệu đã tăng."],
+  ["econ","관세","gwanse","thuế quan","관세를 인상하기로 했다.","Đã quyết định tăng thuế quan."],
+  ["econ","환율","hwallyul","tỷ giá hối đoái","환율 변동이 심하다.","Biến động tỷ giá hối đoái rất lớn."],
+  ["econ","금리","geumni","lãi suất","중앙은행이 금리를 인상했다.","Ngân hàng trung ương đã tăng lãi suất."],
+  ["econ","인플레이션","inpeulleisyeon","lạm phát","인플레이션이 심화되고 있다.","Lạm phát đang trở nên trầm trọng."],
+  ["econ","재정","jaejeong","tài chính nhà nước","정부 재정이 악화되었다.","Tài chính chính phủ đã xấu đi."],
+  ["econ","예산","yesan","ngân sách","국방 예산이 늘었다.","Ngân sách quốc phòng đã tăng."],
+  ["econ","세금","segeum","thuế","세금 부담이 커졌다.","Gánh nặng thuế đã tăng lên."],
+  ["econ","복지","bokji","phúc lợi","복지 정책을 확대했다.","Đã mở rộng chính sách phúc lợi."],
+  ["econ","정책","jeongchaek","chính sách","새 정책이 발표되었다.","Chính sách mới đã được công bố."],
+  ["econ","여당","yeodang","đảng cầm quyền","여당이 법안을 발의했다.","Đảng cầm quyền đã đề xuất dự luật."],
+  ["econ","야당","yadang","đảng đối lập","야당이 강하게 반발했다.","Đảng đối lập đã phản đối mạnh mẽ."],
+  ["econ","선거","seongeo","bầu cử","대통령 선거가 다가온다.","Cuộc bầu cử tổng thống đang đến gần."],
+  ["econ","투표율","tupyoyul","tỷ lệ đi bầu","투표율이 예상보다 낮았다.","Tỷ lệ đi bầu thấp hơn dự kiến."],
+  ["econ","외교","oegyo","ngoại giao","양국은 외교 관계를 회복했다.","Hai nước đã khôi phục quan hệ ngoại giao."],
+  ["econ","협력","hyeomnyeok","hợp tác","두 나라는 경제 협력을 강화했다.","Hai nước đã tăng cường hợp tác kinh tế."],
+  ["econ","제재","jejae","trừng phạt, chế tài","국제 사회가 제재를 가했다.","Cộng đồng quốc tế đã áp đặt trừng phạt."],
+  ["econ","분쟁","bunjaeng","tranh chấp","영토 분쟁이 계속되고 있다.","Tranh chấp lãnh thổ vẫn tiếp diễn."],
+  ["econ","조약","joyak","hiệp ước","평화 조약을 맺었다.","Đã ký kết hiệp ước hòa bình."],
+  ["econ","헌법","heonbeop","hiến pháp","헌법 개정이 논의되고 있다.","Việc sửa đổi hiến pháp đang được bàn luận."],
+  ["econ","법안","beoban","dự luật","법안이 국회를 통과했다.","Dự luật đã được quốc hội thông qua."],
+  ["econ","공약","gongyak","lời hứa tranh cử","후보자의 공약을 살펴봤다.","Đã xem xét lời hứa tranh cử của ứng viên."],
+  ["econ","지지율","jijiyul","tỷ lệ ủng hộ","대통령의 지지율이 하락했다.","Tỷ lệ ủng hộ tổng thống đã giảm."],
+  ["econ","시위","siwi","biểu tình","대규모 시위가 열렸다.","Đã diễn ra cuộc biểu tình quy mô lớn."],
+  ["econ","부패","bupae","tham nhũng","부패 문제가 심각하다.","Vấn đề tham nhũng rất nghiêm trọng."],
+  ["econ","격차","gyeokcha","khoảng cách (giàu nghèo)","빈부 격차가 심화되었다.","Khoảng cách giàu nghèo đã trở nên trầm trọng."],
+  ["econ","저출산","jeochulsan","tỷ lệ sinh thấp","저출산 문제 해결이 시급하다.","Việc giải quyết vấn đề tỷ lệ sinh thấp rất cấp bách."],
+  // ---- 과학과 기술 (Khoa học & công nghệ) — TOPIK 6 ------------------------
+  ["science","연구","yeongu","nghiên cứu","새로운 백신을 연구하고 있다.","Đang nghiên cứu loại vắc-xin mới."],
+  ["science","실험","silheom","thí nghiệm","실험 결과가 예상과 달랐다.","Kết quả thí nghiệm khác với dự đoán."],
+  ["science","가설","gaseol","giả thuyết","가설을 검증했다.","Đã kiểm chứng giả thuyết."],
+  ["science","이론","iron","lý thuyết","새로운 이론이 등장했다.","Một lý thuyết mới đã xuất hiện."],
+  ["science","인공지능","ingongjineung","trí tuệ nhân tạo","인공지능 기술이 발전하고 있다.","Công nghệ trí tuệ nhân tạo đang phát triển."],
+  ["science","로봇","robot","robot","로봇이 사람의 일을 대신한다.","Robot thay thế công việc của con người."],
+  ["science","유전자","yujeonja","gen, di truyền","유전자 변형 작물이 논란이 되고 있다.","Cây trồng biến đổi gen đang gây tranh cãi."],
+  ["science","세포","sepo","tế bào","암세포의 성장을 억제했다.","Đã ức chế sự phát triển của tế bào ung thư."],
+  ["science","우주","uju","vũ trụ","우주 탐사가 활발해졌다.","Việc thám hiểm vũ trụ đã trở nên sôi động."],
+  ["science","위성","wiseong","vệ tinh","인공위성을 발사했다.","Đã phóng vệ tinh nhân tạo."],
+  ["science","원자력","wonjaryeok","năng lượng hạt nhân","원자력 발전소를 건설했다.","Đã xây dựng nhà máy điện hạt nhân."],
+  ["science","재생에너지","jaesaengeneoji","năng lượng tái tạo","재생에너지 비중을 늘리고 있다.","Đang tăng tỷ trọng năng lượng tái tạo."],
+  ["science","온난화","onnanhwa","sự nóng lên toàn cầu","지구 온난화가 심각하다.","Sự nóng lên toàn cầu đang rất nghiêm trọng."],
+  ["science","발명","balmyeong","phát minh","새로운 기술을 발명했다.","Đã phát minh ra công nghệ mới."],
+  ["science","특허","teukheo","bằng sáng chế","특허를 출원했다.","Đã nộp đơn xin cấp bằng sáng chế."],
+  ["science","상용화","sangyonghwa","thương mại hóa","기술의 상용화가 앞당겨졌다.","Việc thương mại hóa công nghệ đã được đẩy nhanh."],
+  ["science","자율주행","jayuljuhaeng","lái xe tự động","자율주행 자동차를 시험했다.","Đã thử nghiệm xe tự lái."],
+  ["science","빅데이터","bikdeiteo","dữ liệu lớn","빅데이터를 분석해서 예측했다.","Đã phân tích dữ liệu lớn để dự đoán."],
+  ["science","사물인터넷","samulinteonet","internet vạn vật (IoT)","사물인터넷 기술이 확산되고 있다.","Công nghệ IoT đang lan rộng."],
+  ["science","나노기술","nanogisul","công nghệ nano","나노기술이 의료에 활용된다.","Công nghệ nano được ứng dụng trong y tế."],
+  ["science","신소재","sinsojae","vật liệu mới","신소재를 개발했다.","Đã phát triển vật liệu mới."],
+  ["science","백신","baeksin","vắc-xin","백신 접종률이 높아졌다.","Tỷ lệ tiêm vắc-xin đã tăng lên."],
+  ["science","전염병","jeonyeombyeong","bệnh truyền nhiễm","전염병이 빠르게 확산됐다.","Bệnh truyền nhiễm đã lan nhanh."],
+  ["science","면역","myeonyeok","miễn dịch","면역력을 높이는 방법을 찾고 있다.","Đang tìm cách tăng cường miễn dịch."],
+  ["science","융합","yunghap","sự hội tụ (công nghệ)","기술 융합이 새로운 산업을 만든다.","Sự hội tụ công nghệ tạo ra ngành công nghiệp mới."],
+  // ---- 문화와 예술 (Văn hóa & nghệ thuật) — TOPIK 6 ------------------------
+  ["culture","전통","jeontong","truyền thống","전통을 계승해야 한다.","Cần kế thừa truyền thống."],
+  ["culture","풍습","pungseup","phong tục","지역마다 풍습이 다르다.","Mỗi vùng có phong tục khác nhau."],
+  ["culture","유산","yusan","di sản","문화유산을 보존해야 한다.","Cần bảo tồn di sản văn hóa."],
+  ["culture","전시","jeonsi","triển lãm","미술 전시가 열렸다.","Đã diễn ra triển lãm mỹ thuật."],
+  ["culture","공연","gongyeon","buổi biểu diễn","무료 공연이 진행된다.","Buổi biểu diễn miễn phí đang được tổ chức."],
+  ["culture","창작","changjak","sáng tác","새 작품을 창작했다.","Đã sáng tác tác phẩm mới."],
+  ["culture","작품","jakpum","tác phẩm","그의 작품이 큰 호평을 받았다.","Tác phẩm của anh ấy được đánh giá cao."],
+  ["culture","감상","gamsang","sự thưởng thức (nghệ thuật)","음악 감상을 즐긴다.","Tôi thích thưởng thức âm nhạc."],
+  ["culture","표현","pyohyeon","sự biểu đạt","감정을 표현하는 방식이 다르다.","Cách biểu đạt cảm xúc mỗi người khác nhau."],
+  ["culture","상징","sangjing","biểu tượng","이 그림은 평화를 상징한다.","Bức tranh này biểu tượng cho hòa bình."],
+  ["culture","미학","mihak","mỹ học","동양 미학에 관심이 많다.","Tôi rất quan tâm đến mỹ học phương Đông."],
+  ["culture","대중문화","daejungmunhwa","văn hóa đại chúng","대중문화의 영향력이 커졌다.","Ảnh hưởng của văn hóa đại chúng đã lớn lên."],
+  ["culture","세대차","sedaecha","khoảng cách thế hệ","세대차로 인한 갈등이 있다.","Có mâu thuẫn do khoảng cách thế hệ."],
+  ["culture","정체성","jeongcheseong","bản sắc, danh tính","문화적 정체성을 지켜야 한다.","Cần giữ gìn bản sắc văn hóa."],
+  ["culture","다양성","dayangseong","sự đa dạng","문화적 다양성을 존중해야 한다.","Cần tôn trọng sự đa dạng văn hóa."],
+  ["culture","편입","pyeonip","sự sáp nhập, hòa nhập","새로운 문화에 편입되었다.","Đã hòa nhập vào nền văn hóa mới."],
+  ["culture","왜곡","waegok","sự bóp méo, xuyên tạc","역사가 왜곡되었다.","Lịch sử đã bị xuyên tạc."],
+  ["culture","각색","gaeksaek","sự chuyển thể","소설을 영화로 각색했다.","Đã chuyển thể tiểu thuyết thành phim."],
+  ["culture","연출","yeonchul","đạo diễn, dàn dựng","그가 이 영화를 연출했다.","Anh ấy đã đạo diễn bộ phim này."],
+  ["culture","몰입","molip","sự đắm chìm, tập trung","이야기에 몰입했다.","Đã đắm chìm vào câu chuyện."],
+  ["culture","여운","yeoun","dư âm, dư vị","영화가 끝나도 여운이 남았다.","Phim kết thúc rồi mà dư âm vẫn còn."],
+  ["culture","절정","jeoljeong","cao trào","이야기가 절정에 이르렀다.","Câu chuyện đã đến cao trào."],
+  ["culture","비평","bipyeong","phê bình","영화 비평을 읽었다.","Đã đọc bài phê bình phim."],
+  ["culture","풍자","pungja","châm biếm","사회를 풍자하는 작품이다.","Đây là tác phẩm châm biếm xã hội."],
+  ["culture","전승","jeonseung","sự lưu truyền","구전으로 전승되는 이야기다.","Đây là câu chuyện được lưu truyền bằng miệng."],
+  // ---- 환경과 건강 (Môi trường & sức khỏe) — TOPIK 6 -----------------------
+  ["environment","오염","oyeom","ô nhiễm","대기 오염이 심각하다.","Ô nhiễm không khí rất nghiêm trọng."],
+  ["environment","미세먼지","misemeonji","bụi mịn","미세먼지 농도가 높다.","Nồng độ bụi mịn cao."],
+  ["environment","온실가스","onsilgaseu","khí nhà kính","온실가스 배출을 줄여야 한다.","Cần giảm phát thải khí nhà kính."],
+  ["environment","재활용","jaehwallyong","tái chế","플라스틱을 재활용한다.","Tái chế nhựa."],
+  ["environment","멸종","myeoljong","sự tuyệt chủng","많은 동물이 멸종 위기에 처했다.","Nhiều loài động vật đang đứng trước nguy cơ tuyệt chủng."],
+  ["environment","생태계","saengtaegye","hệ sinh thái","생태계 파괴가 우려된다.","Sự phá hủy hệ sinh thái đang gây lo ngại."],
+  ["environment","기후변화","gihubyeonhwa","biến đổi khí hậu","기후변화 대응이 필요하다.","Cần ứng phó với biến đổi khí hậu."],
+  ["environment","가뭄","gamum","hạn hán","올해 가뭄이 심했다.","Năm nay hạn hán rất nghiêm trọng."],
+  ["environment","홍수","hongsu","lũ lụt","홍수로 큰 피해를 입었다.","Đã chịu thiệt hại lớn do lũ lụt."],
+  ["environment","폭염","pogyeom","nắng nóng gay gắt","폭염 경보가 발령됐다.","Cảnh báo nắng nóng gay gắt đã được ban hành."],
+  ["environment","면역력","myeonyeongnyeok","sức đề kháng","면역력이 약해졌다.","Sức đề kháng đã yếu đi."],
+  ["environment","영양","yeongyang","dinh dưỡng","균형 잡힌 영양 섭취가 중요하다.","Việc hấp thụ dinh dưỡng cân bằng rất quan trọng."],
+  ["environment","질병","jilbyeong","bệnh tật","만성 질병을 앓고 있다.","Đang mắc bệnh mãn tính."],
+  ["environment","증상","jeungsang","triệu chứng","증상이 점점 심해졌다.","Triệu chứng ngày càng nặng."],
+  ["environment","진단","jindan","chẩn đoán","정확한 진단이 필요하다.","Cần chẩn đoán chính xác."],
+  ["environment","치료","chiryo","điều trị","꾸준한 치료가 필요하다.","Cần điều trị liên tục."],
+  ["environment","예방","yebang","phòng ngừa","질병 예방이 최선이다.","Phòng ngừa bệnh tật là tốt nhất."],
+  ["environment","수면","sumyeon","giấc ngủ","충분한 수면이 건강에 좋다.","Ngủ đủ giấc tốt cho sức khỏe."],
+  ["environment","스트레스","seuteureseu","căng thẳng, stress","스트레스 관리가 중요하다.","Việc quản lý stress rất quan trọng."],
+  ["environment","노화","nohwa","sự lão hóa","노화를 늦추는 방법이 있다.","Có cách làm chậm quá trình lão hóa."],
+  ["environment","비만","biman","béo phì","비만이 여러 질병의 원인이 된다.","Béo phì là nguyên nhân của nhiều bệnh."],
+  ["environment","체력","cheryeok","thể lực","체력을 기르기 위해 운동한다.","Tập thể dục để rèn luyện thể lực."],
+  ["environment","재난","jaenan","thiên tai, thảm họa","자연재난에 대비해야 한다.","Cần phòng bị trước thiên tai."],
+  ["environment","지속가능성","jisokganeungseong","tính bền vững","지속가능한 발전이 필요하다.","Cần phát triển bền vững."],
+  ["environment","친환경","chinhwangyeong","thân thiện với môi trường","친환경 제품을 선호한다.","Ưa chuộng sản phẩm thân thiện với môi trường."],
+].map((row, i) => ({
+  id: `w${i}`,
+  category: row[0],
+  hangul: row[1],
+  romanization: row[2],
+  meaning: row[3],
+  example: row[4],
+  exampleMeaning: row[5],
+  meaningEn: EN_TRANSLATIONS[i] ? EN_TRANSLATIONS[i][0] : row[3],
+  exampleMeaningEn: EN_TRANSLATIONS[i] ? EN_TRANSLATIONS[i][1] : row[5],
+  custom: false,
+}));
+
+const STORAGE_KEY = "kv-state-v1";
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// UI chrome text — lets someone who doesn't read Korean fully use the app
+const UI_TEXT = {
+  vi: {
+    brandSub: "Từ vựng trung cấp · TOPIK II · TOPIK 6 · IT Comtor",
+    streakLabel: "ngày liên tục",
+    tabStudy: "Học",
+    tabBrowse: "Danh sách từ",
+    tabAdd: "Thêm từ",
+    allChip: "Tất cả",
+    tapHint: "Chạm vào thẻ để xem nghĩa",
+    speakWord: "Nghe phát âm",
+    speakExample: "Nghe câu ví dụ",
+    prevBtn: "◀ Trước",
+    nextBtn: "Tiếp ▶",
+    navSubHint: "Nhấn 'Trước' để xem lại mọi thẻ đã trả lời, từ đầu đến giờ.",
+    reviewBtn: "Chưa thuộc",
+    knowBtn: "Đã thuộc",
+    alreadyKnownTag: "Đã thuộc rồi",
+    markedReviewTag: "Đã đánh dấu ôn lại",
+    doneCongratsTitle: "Chúc mừng!",
+    doneCongratsText: (cat) => `Bạn đã thuộc hết từ vựng trong "${cat}". Bạn học rất tốt!`,
+    doneRoundTitle: "Đã xong một vòng học",
+    doneRoundText: (known, remain) => `Bạn đã thuộc ${known} từ, còn ${remain} từ cần ôn lại.`,
+    restartBtn: "Học lại từ đầu",
+    prevCardAgainBtn: "◀ Xem lại thẻ trước",
+    emptyMsg: "Danh mục này chưa có từ. Hãy thêm từ ở tab 'Thêm từ'.",
+    knownLabel: "Đã thuộc",
+    reviewLabel: "Ôn lại",
+    newLabel: "Từ mới",
+    formCategory: "Danh mục",
+    formNewCategoryOption: "+ Tạo danh mục mới…",
+    formNewCategoryLabel: "Tên danh mục mới",
+    formNewCategoryPlaceholder: "Ví dụ: Du lịch, Ẩm thực...",
+    formHangul: "Từ (chữ Hàn)",
+    formRoman: "Phiên âm La-tinh (tuỳ chọn)",
+    formMeaningVi: "Nghĩa (tiếng Việt)",
+    formMeaningEn: "Nghĩa (tiếng Anh, tuỳ chọn)",
+    formExample: "Câu ví dụ (tuỳ chọn)",
+    formExampleMeaningVi: "Dịch câu ví dụ - tiếng Việt (tuỳ chọn)",
+    formExampleMeaningEn: "Dịch câu ví dụ - tiếng Anh (tuỳ chọn)",
+    submitBtn: "Thêm từ",
+    myWordsTitle: "Từ bạn đã thêm",
+    toastKnow: "Đã thuộc ✓",
+    toastReview: "Sẽ ôn lại sau",
+    toastAdded: "Đã thêm từ",
+    loading: "Đang tải…",
+    allCategoryName: "Tất cả",
+    modeFlashcard: "Thẻ ghi nhớ",
+    modeTyping: "Gõ chính tả",
+    modeQuiz: "Trắc nghiệm",
+    typingPrompt: "Từ tiếng Hàn có nghĩa là:",
+    typingPlaceholder: "Gõ từ tiếng Hàn vào đây...",
+    checkBtn: "Kiểm tra",
+    wrongTryAgain: "Sai rồi, thử lại nhé!",
+    romanizationHintLabel: "Gợi ý phiên âm",
+    quizPrompt: "Từ này có nghĩa là gì?",
+    mistakesBadge: (n) => `Đã sai ${n} lần`,
+    correctFeedback: "Chính xác!",
+  },
+  en: {
+    brandSub: "Intermediate vocabulary · TOPIK II · TOPIK 6 · IT Comtor",
+    streakLabel: "day streak",
+    tabStudy: "Study",
+    tabBrowse: "Word list",
+    tabAdd: "Add word",
+    allChip: "All",
+    tapHint: "Tap the card to see the meaning",
+    speakWord: "Listen to pronunciation",
+    speakExample: "Listen to example",
+    prevBtn: "◀ Prev",
+    nextBtn: "Next ▶",
+    navSubHint: "Press 'Prev' to review every card you've answered so far, from the start.",
+    reviewBtn: "Don't know yet",
+    knowBtn: "I know it",
+    alreadyKnownTag: "Already known",
+    markedReviewTag: "Marked for review",
+    doneCongratsTitle: "Congratulations!",
+    doneCongratsText: (cat) => `You've learned every word in "${cat}". Great job!`,
+    doneRoundTitle: "Round complete",
+    doneRoundText: (known, remain) => `You know ${known} words, ${remain} still need review.`,
+    restartBtn: "Restart from the beginning",
+    prevCardAgainBtn: "◀ Review previous card",
+    emptyMsg: "No words in this category yet. Add some in the 'Add word' tab.",
+    knownLabel: "Known",
+    reviewLabel: "Review",
+    newLabel: "New",
+    formCategory: "Category",
+    formNewCategoryOption: "+ Create new category…",
+    formNewCategoryLabel: "New category name",
+    formNewCategoryPlaceholder: "e.g. Travel, Food...",
+    formHangul: "Word (Hangul)",
+    formRoman: "Romanization (optional)",
+    formMeaningVi: "Meaning (Vietnamese)",
+    formMeaningEn: "Meaning (English, optional)",
+    formExample: "Example sentence (optional)",
+    formExampleMeaningVi: "Example translation - Vietnamese (optional)",
+    formExampleMeaningEn: "Example translation - English (optional)",
+    submitBtn: "Add word",
+    myWordsTitle: "Your added words",
+    toastKnow: "Known ✓",
+    toastReview: "Will review later",
+    toastAdded: "Word added",
+    loading: "Loading…",
+    allCategoryName: "All",
+    modeFlashcard: "Flashcards",
+    modeTyping: "Spelling",
+    modeQuiz: "Quiz",
+    typingPrompt: "Type the Korean word that means:",
+    typingPlaceholder: "Type the Hangul word here...",
+    checkBtn: "Check",
+    wrongTryAgain: "Not quite, try again!",
+    romanizationHintLabel: "Romanization hint",
+    quizPrompt: "What does this word mean?",
+    mistakesBadge: (n) => `Missed ${n} time${n > 1 ? "s" : ""}`,
+    correctFeedback: "Correct!",
+  },
+  ko: {
+    brandSub: "중급 어휘 · TOPIK II · TOPIK 6 · IT 컴토 용어",
+    streakLabel: "일 연속",
+    tabStudy: "학습",
+    tabBrowse: "단어 목록",
+    tabAdd: "단어 추가",
+    allChip: "전체",
+    tapHint: "탭해서 뜻 보기",
+    speakWord: "발음 듣기",
+    speakExample: "예문 듣기",
+    prevBtn: "◀ 이전",
+    nextBtn: "다음 ▶",
+    navSubHint: "'이전'을 누르면 지금까지 답한 카드를 처음부터 모두 다시 볼 수 있어요.",
+    reviewBtn: "몰라요",
+    knowBtn: "알아요",
+    alreadyKnownTag: "이미 외운 단어",
+    markedReviewTag: "복습 표시함",
+    doneCongratsTitle: "축하합니다!",
+    doneCongratsText: (cat) => `"${cat}"의 단어를 모두 외웠어요. 정말 잘하고 있어요!`,
+    doneRoundTitle: "한 바퀴를 다 돌았어요",
+    doneRoundText: (known, remain) => `${known}개는 외웠고, ${remain}개는 다시 봐야 해요.`,
+    restartBtn: "처음부터 다시 학습하기",
+    prevCardAgainBtn: "◀ 이전 카드 다시 보기",
+    emptyMsg: "이 카테고리에는 단어가 없어요. '단어 추가' 탭에서 단어를 넣어보세요.",
+    knownLabel: "알아요",
+    reviewLabel: "복습",
+    newLabel: "새 단어",
+    formCategory: "카테고리",
+    formNewCategoryOption: "+ 새 카테고리 만들기…",
+    formNewCategoryLabel: "새 카테고리 이름",
+    formNewCategoryPlaceholder: "예: 여행, 음식...",
+    formHangul: "단어 (한글)",
+    formRoman: "발음 (로마자, 선택)",
+    formMeaningVi: "뜻 (베트남어)",
+    formMeaningEn: "뜻 (영어, 선택)",
+    formExample: "예문 (선택)",
+    formExampleMeaningVi: "예문 번역 - 베트남어 (선택)",
+    formExampleMeaningEn: "예문 번역 - 영어 (선택)",
+    submitBtn: "단어 추가하기",
+    myWordsTitle: "내가 추가한 단어",
+    toastKnow: "알아요 ✓",
+    toastReview: "다시 볼게요",
+    toastAdded: "단어 추가됨",
+    loading: "불러오는 중…",
+    allCategoryName: "전체",
+    modeFlashcard: "플래시카드",
+    modeTyping: "받아쓰기",
+    modeQuiz: "퀴즈",
+    typingPrompt: "다음 뜻에 해당하는 한국어 단어를 입력하세요:",
+    typingPlaceholder: "여기에 한글 단어를 입력하세요...",
+    checkBtn: "확인",
+    wrongTryAgain: "틀렸어요, 다시 해보세요!",
+    romanizationHintLabel: "발음 힌트",
+    quizPrompt: "이 단어의 뜻은 무엇일까요?",
+    mistakesBadge: (n) => `${n}번 틀림`,
+    correctFeedback: "정답이에요!",
+  },
+};
+
+// ---------------------------------------------------------------------------
+
+function KoreanVocabApp() {
+  const [ready, setReady] = useState(false);
+  const [progress, setProgress] = useState({}); // id -> {status, seen}
+  const [customWords, setCustomWords] = useState([]);
+  const [customCategories, setCustomCategories] = useState([]); // user-created categories: {id,label,sub,subEn}
+  const [streak, setStreak] = useState({ lastDate: null, count: 0 });
+  const [lang, setLang] = useState("vi"); // "vi" | "en" — language used for meanings/example translations
+
+  const [view, setView] = useState("study"); // study | browse | add
+  const [activeCat, setActiveCat] = useState(null); // null = show the category picker
+  const [roundOrder, setRoundOrder] = useState([]); // fixed word order for the current round
+  const [marks, setMarks] = useState({}); // wordId -> "know" | "review", decisions made THIS round
+  const [position, setPosition] = useState(0); // pointer into roundOrder — never removes cards
+  const [roundDone, setRoundDone] = useState(false);
+  const [flipped, setFlipped] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [studyMode, setStudyMode] = useState("flashcard"); // flashcard | typing | quiz
+  const [attemptMistakes, setAttemptMistakes] = useState(0); // wrong tries on the CURRENT word before getting it right
+  const [typedAnswer, setTypedAnswer] = useState("");
+  const [typingFeedback, setTypingFeedback] = useState(null); // null | "wrong"
+  const [quizOptions, setQuizOptions] = useState([]);
+  const [quizWrongIds, setQuizWrongIds] = useState(() => new Set());
+
+  const allWords = useMemo(() => [...SEED_WORDS, ...customWords], [customWords]);
+  const allCategories = useMemo(() => [...CATEGORIES, ...customCategories], [customCategories]);
+
+  // ---- load persisted state -------------------------------------------------
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get(STORAGE_KEY, false);
+        if (res && res.value) {
+          const parsed = JSON.parse(res.value);
+          setProgress(parsed.progress || {});
+          setCustomWords((parsed.custom || []).map((w) => ({ ...w, custom: true })));
+          setCustomCategories(parsed.customCategories || []);
+          if (["en", "vi", "ko"].includes(parsed.lang)) setLang(parsed.lang);
+          const st = parsed.streak || { lastDate: null, count: 0 };
+          const today = todayStr();
+          const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          if (st.lastDate === today) {
+            setStreak(st);
+          } else if (st.lastDate === yest) {
+            setStreak({ lastDate: today, count: st.count + 1 });
+          } else if (st.lastDate) {
+            setStreak({ lastDate: today, count: 1 });
+          } else {
+            setStreak({ lastDate: today, count: 1 });
+          }
+        } else {
+          setStreak({ lastDate: todayStr(), count: 1 });
+        }
+      } catch (e) {
+        setStreak({ lastDate: todayStr(), count: 1 });
+      }
+      setReady(true);
+    })();
+  }, []);
+
+  const persist = useCallback((next) => {
+    window.storage.set(STORAGE_KEY, JSON.stringify(next), false).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    persist({
+      progress,
+      custom: customWords.map(({ custom, ...rest }) => rest),
+      customCategories,
+      streak,
+      lang,
+    });
+  }, [progress, customWords, customCategories, streak, lang, ready, persist]);
+
+  // ---- build a study round ---------------------------------------------------
+  const buildQueue = useCallback(
+    (catId) => {
+      const pool = catId === "all" ? allWords : allWords.filter((w) => w.category === catId);
+      const review = pool.filter((w) => progress[w.id]?.status === "review");
+      const fresh = pool.filter((w) => !progress[w.id]);
+      const known = pool.filter((w) => progress[w.id]?.status === "know");
+      const ordered = [...shuffle(review), ...shuffle(fresh), ...shuffle(known)];
+      return ordered.length ? ordered : shuffle(pool);
+    },
+    [allWords, progress]
+  );
+
+  const startRound = useCallback(
+    (catId) => {
+      const words = buildQueue(catId);
+      setRoundOrder(words);
+      setMarks({});
+      setPosition(0);
+      setRoundDone(false);
+      setFlipped(false);
+    },
+    [buildQueue]
+  );
+
+  useEffect(() => {
+    if (!ready || activeCat === null) return;
+    startRound(activeCat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, activeCat, customWords.length]);
+
+  const current = roundOrder[position];
+  const roundTotal = roundOrder.length;
+  const remainingCount = roundOrder.filter((w) => marks[w.id] !== "know").length;
+
+  // find the next position at/after `from` that isn't already marked "know" in this round
+  const findNextOpen = useCallback(
+    (from, marksMap) => {
+      let p = from;
+      while (p < roundOrder.length && marksMap[roundOrder[p].id] === "know") p++;
+      return p;
+    },
+    [roundOrder]
+  );
+
+  const goNext = useCallback(() => {
+    setFlipped(false);
+    setPosition((p) => {
+      const next = findNextOpen(p + 1, marks);
+      if (next >= roundOrder.length) {
+        setRoundDone(true);
+        return p;
+      }
+      return next;
+    });
+  }, [findNextOpen, marks, roundOrder.length]);
+
+  // "이전" always steps back one position in the fixed order, so every card the
+  // person has already answered — known or not — stays reachable, all the way to the start.
+  const goPrev = useCallback(() => {
+    setFlipped(false);
+    setRoundDone(false);
+    setPosition((p) => Math.max(0, p - 1));
+  }, []);
+
+  const mark = (status) => {
+    if (!current) return;
+    const word = current;
+    const nextMarks = { ...marks, [word.id]: status };
+
+    // if the person got it wrong, pull this word a few cards closer so it
+    // resurfaces again soon in THIS same round, instead of only next round
+    let nextOrder = roundOrder;
+    if (status === "review") {
+      const insertAt = Math.min(roundOrder.length, position + 4);
+      nextOrder = [...roundOrder];
+      nextOrder.splice(insertAt, 0, word);
+    }
+
+    setMarks(nextMarks);
+    if (nextOrder !== roundOrder) setRoundOrder(nextOrder);
+    setProgress((p) => ({
+      ...p,
+      [word.id]: { ...(p[word.id] || {}), status, seen: (p[word.id]?.seen || 0) + 1 },
+    }));
+    setToast(status === "know" ? t("toastKnow") : t("toastReview"));
+    setTimeout(() => setToast(null), 900);
+    setFlipped(false);
+
+    setTimeout(() => {
+      let p = position + 1;
+      while (p < nextOrder.length && nextMarks[nextOrder[p].id] === "know") p++;
+      if (p >= nextOrder.length) {
+        setRoundDone(true);
+      } else {
+        setPosition(p);
+      }
+    }, 220);
+  };
+
+  // records a wrong attempt on the current word — in typing/quiz mode the
+  // person must keep answering the SAME word until they get it right
+  const registerMistake = (word) => {
+    if (!word) return;
+    setAttemptMistakes((m) => m + 1);
+    setProgress((p) => ({
+      ...p,
+      [word.id]: { ...(p[word.id] || {}), mistakes: (p[word.id]?.mistakes || 0) + 1 },
+    }));
+  };
+
+  // called once the person finally answers the current word correctly
+  const completeCorrectAnswer = () => {
+    const finalStatus = attemptMistakes > 0 ? "review" : "know";
+    mark(finalStatus);
+  };
+
+  const submitTyping = () => {
+    if (!current) return;
+    const isCorrect = typedAnswer.trim() === current.hangul.trim();
+    if (isCorrect) {
+      setTypingFeedback(null);
+      completeCorrectAnswer();
+    } else {
+      registerMistake(current);
+      setTypingFeedback("wrong");
+      setTypedAnswer("");
+      setTimeout(() => setTypingFeedback(null), 900);
+    }
+  };
+
+  const selectQuizOption = (opt) => {
+    if (!current || quizWrongIds.has(opt.id)) return;
+    if (opt.id === current.id) {
+      completeCorrectAnswer();
+    } else {
+      registerMistake(current);
+      setQuizWrongIds((prev) => new Set(prev).add(opt.id));
+    }
+  };
+
+  // reset the ephemeral practice-mode state whenever the word or mode changes
+  useEffect(() => {
+    setAttemptMistakes(0);
+    setTypedAnswer("");
+    setTypingFeedback(null);
+    setQuizWrongIds(new Set());
+    if (studyMode === "quiz" && current) {
+      const distractPool = allWords.filter((w) => w.id !== current.id);
+      const distractors = shuffle(distractPool).slice(0, 3);
+      const options = shuffle([
+        { id: current.id, text: meaningOf(current) },
+        ...distractors.map((w) => ({ id: w.id, text: meaningOf(w) })),
+      ]);
+      setQuizOptions(options);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, studyMode, lang]);
+
+  const catStats = (catId) => {
+    const pool = catId === "all" ? allWords : allWords.filter((w) => w.category === catId);
+    const known = pool.filter((w) => progress[w.id]?.status === "know").length;
+    return { known, total: pool.length };
+  };
+
+  const overall = catStats("all");
+
+  // ---- add word form ---------------------------------------------------------
+  const [form, setForm] = useState({
+    category: "daily",
+    hangul: "",
+    romanization: "",
+    meaning: "",
+    meaningEn: "",
+    example: "",
+    exampleMeaning: "",
+    exampleMeaningEn: "",
+  });
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const submitWord = (e) => {
+    e.preventDefault();
+    if (!form.hangul.trim() || !(form.meaning.trim() || form.meaningEn.trim())) return;
+
+    let categoryId = form.category;
+    if (categoryId === "__new__") {
+      const name = newCategoryName.trim();
+      if (!name) return; // need a name to create the category
+      const slug = `custom_${name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "") || Date.now()}`;
+      const existing = customCategories.find((c) => c.label === name);
+      if (existing) {
+        categoryId = existing.id;
+      } else {
+        categoryId = slug;
+        setCustomCategories((cats) => [...cats, { id: slug, label: name, sub: name, subEn: name }]);
+      }
+    }
+
+    const w = {
+      id: `c${Date.now()}`,
+      ...form,
+      category: categoryId,
+      meaning: form.meaning.trim() || form.meaningEn,
+      meaningEn: form.meaningEn.trim() || form.meaning,
+      exampleMeaning: form.exampleMeaning.trim() || form.exampleMeaningEn,
+      exampleMeaningEn: form.exampleMeaningEn.trim() || form.exampleMeaning,
+      custom: true,
+    };
+    setCustomWords((c) => [...c, w]);
+    setForm({
+      category: categoryId,
+      hangul: "",
+      romanization: "",
+      meaning: "",
+      meaningEn: "",
+      example: "",
+      exampleMeaning: "",
+      exampleMeaningEn: "",
+    });
+    setNewCategoryName("");
+    setToast(t("toastAdded"));
+    setTimeout(() => setToast(null), 900);
+  };
+
+  const catLabel = (id) => allCategories.find((c) => c.id === id)?.label || id;
+  const catSub = (id) => {
+    const c = allCategories.find((c) => c.id === id);
+    if (!c) return "";
+    if (lang === "ko") return c.label; // category names are already Korean
+    return lang === "en" ? c.subEn ?? c.sub : c.sub;
+  };
+  const meaningOf = (w) => {
+    if (!w) return "";
+    if (lang === "ko") return w.meaningEn || w.meaning; // Koreans read the EN/VI gloss to learn those languages
+    return lang === "en" ? w.meaningEn || w.meaning : w.meaning;
+  };
+  const exampleMeaningOf = (w) => {
+    if (!w) return "";
+    if (lang === "ko") return w.exampleMeaningEn || w.exampleMeaning;
+    return lang === "en" ? w.exampleMeaningEn || w.exampleMeaning : w.exampleMeaning;
+  };
+  const t = (key) => UI_TEXT[lang][key] ?? UI_TEXT.vi[key] ?? key;
+
+  const speak = useCallback((text) => {
+    try {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ko-KR";
+      u.rate = 0.85;
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      /* speech synthesis unavailable */
+    }
+  }, []);
+
+  if (!ready) {
+    return (
+      <div style={{ ...styles.app, alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: "#C9A24B", fontFamily: "'Noto Sans KR', sans-serif" }}>{t("loading")}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.app}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;600&display=swap');
+        * { box-sizing: border-box; }
+        .kv-tab { transition: color .15s ease, border-color .15s ease; }
+        .kv-tab:hover { color: #F0E9D8; }
+        .kv-btn { transition: transform .1s ease, background .15s ease; }
+        .kv-btn:active { transform: scale(0.97); }
+        .kv-card-face { backface-visibility: hidden; }
+        .kv-scroll::-webkit-scrollbar { width: 6px; }
+        .kv-scroll::-webkit-scrollbar-thumb { background: #3A4150; border-radius: 3px; }
+      `}</style>
+
+      <header style={styles.header}>
+        <div>
+          <div style={styles.brand}>단어장</div>
+          <div style={styles.brandSub}>{t("brandSub")}</div>
+        </div>
+        <div style={styles.headerRight}>
+          <div style={styles.langToggle}>
+            {["vi", "en", "ko"].map((l) => (
+              <button
+                key={l}
+                className="kv-btn"
+                onClick={() => setLang(l)}
+                style={{
+                  ...styles.langBtn,
+                  background: lang === l ? GOLD : "transparent",
+                  color: lang === l ? "#22252A" : MUTE,
+                }}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div style={styles.streakBox}>
+            <div style={styles.streakNum}>{streak.count}</div>
+            <div style={styles.streakLabel}>{t("streakLabel")}</div>
+          </div>
+        </div>
+      </header>
+
+      <nav style={styles.nav}>
+        {["study", "browse", "add"].map((v) => (
+          <button
+            key={v}
+            className="kv-tab"
+            onClick={() => setView(v)}
+            style={{
+              ...styles.navBtn,
+              color: view === v ? "#F0E9D8" : "#8A93A3",
+              borderBottom: view === v ? "2px solid #A8412F" : "2px solid transparent",
+            }}
+          >
+            {v === "study" ? t("tabStudy") : v === "browse" ? t("tabBrowse") : t("tabAdd")}
+          </button>
+        ))}
+      </nav>
+
+      {view === "study" && activeCat === null && (
+        <div style={styles.body}>
+          <div style={styles.folderGrid}>
+            <button className="kv-btn" onClick={() => setActiveCat("all")} style={styles.folderCard}>
+              <div style={styles.folderIcon}>📚</div>
+              <div style={styles.folderLabel}>{t("allChip")}</div>
+              <div style={styles.folderCount}>
+                {overall.known}/{overall.total}
+              </div>
+            </button>
+            {allCategories.map((c) => {
+              const s = catStats(c.id);
+              return (
+                <button key={c.id} className="kv-btn" onClick={() => setActiveCat(c.id)} style={styles.folderCard}>
+                  <div style={styles.folderIcon}>{c.label.slice(0, 1)}</div>
+                  <div style={styles.folderLabel}>{catSub(c.id)}</div>
+                  <div style={styles.folderSubKorean}>{c.label}</div>
+                  <div style={styles.folderCount}>
+                    {s.known}/{s.total}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {view === "study" && activeCat !== null && (
+        <div style={styles.body}>
+          <div style={styles.catHeaderRow}>
+            <button className="kv-btn" style={styles.backToFoldersBtn} onClick={() => setActiveCat(null)}>
+              {lang === "ko" ? "◀ 카테고리" : lang === "en" ? "◀ Categories" : "◀ Danh mục"}
+            </button>
+            <div style={styles.catHeaderTitle}>
+              {activeCat === "all" ? t("allChip") : catSub(activeCat)}
+            </div>
+          </div>
+
+          <div style={styles.modeRow}>
+            {["flashcard", "typing", "quiz"].map((m) => (
+              <button
+                key={m}
+                className="kv-btn"
+                onClick={() => setStudyMode(m)}
+                style={{ ...styles.modeBtn, ...(studyMode === m ? styles.modeBtnActive : {}) }}
+              >
+                {m === "flashcard" ? t("modeFlashcard") : m === "typing" ? t("modeTyping") : t("modeQuiz")}
+              </button>
+            ))}
+          </div>
+
+          {roundTotal === 0 ? (
+            <div style={styles.empty}>{t("emptyMsg")}</div>
+          ) : roundDone ? (
+            <div style={styles.doneWrap}>
+              {remainingCount === 0 ? (
+                <>
+                  <div style={styles.doneEmoji}>🎉</div>
+                  <div style={styles.doneTitle}>{t("doneCongratsTitle")}</div>
+                  <div style={styles.doneText}>
+                    {t("doneCongratsText")(activeCat === "all" ? t("allCategoryName") : catSub(activeCat))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={styles.doneEmoji}>✅</div>
+                  <div style={styles.doneTitle}>{t("doneRoundTitle")}</div>
+                  <div style={styles.doneText}>{t("doneRoundText")(roundTotal - remainingCount, remainingCount)}</div>
+                </>
+              )}
+              <div style={styles.doneActions}>
+                <button className="kv-btn" style={styles.navArrowBtn} onClick={goPrev}>
+                  {t("prevCardAgainBtn")}
+                </button>
+                <button className="kv-btn" style={styles.restartBtn} onClick={() => startRound(activeCat)}>
+                  {t("restartBtn")}
+                </button>
+              </div>
+            </div>
+          ) : current ? (
+            <>
+              {progress[current.id]?.mistakes > 0 && (
+                <div style={styles.mistakeBadge}>{t("mistakesBadge")(progress[current.id].mistakes)}</div>
+              )}
+
+              {studyMode === "flashcard" && (
+                <div style={styles.cardWrap}>
+                  <div
+                    onClick={() => setFlipped((f) => !f)}
+                    style={{
+                      ...styles.card,
+                      transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                    }}
+                  >
+                    <div className="kv-card-face" style={{ ...styles.cardFace }}>
+                      <div style={styles.seal}>{catLabel(current.category).slice(0, 2)}</div>
+                      {marks[current.id] && (
+                        <div style={styles.reviewedTag}>
+                          {marks[current.id] === "know" ? t("alreadyKnownTag") : t("markedReviewTag")}
+                        </div>
+                      )}
+                      <button
+                        className="kv-btn"
+                        style={styles.speakBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          speak(current.hangul);
+                        }}
+                        aria-label={t("speakWord")}
+                      >
+                        <Volume2 size={18} />
+                      </button>
+                      <div style={styles.hangul}>{current.hangul}</div>
+                      <div style={styles.romanization}>{current.romanization}</div>
+                      <div style={styles.tapHint}>{t("tapHint")}</div>
+                    </div>
+                    <div className="kv-card-face" style={{ ...styles.cardFace, ...styles.cardBack }}>
+                      <button
+                        className="kv-btn"
+                        style={styles.speakBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          speak(current.example || current.hangul);
+                        }}
+                        aria-label={t("speakExample")}
+                      >
+                        <Volume2 size={18} />
+                      </button>
+                      <div style={styles.meaning}>{meaningOf(current)}</div>
+                      <div style={styles.exampleKo}>{current.example}</div>
+                      <div style={styles.exampleVi}>{exampleMeaningOf(current)}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {studyMode === "typing" && (
+                <div style={styles.practiceWrap}>
+                  {marks[current.id] && (
+                    <div style={styles.reviewedTagStatic}>
+                      {marks[current.id] === "know" ? t("alreadyKnownTag") : t("markedReviewTag")}
+                    </div>
+                  )}
+                  <div style={styles.practicePrompt}>{t("typingPrompt")}</div>
+                  <div style={styles.practiceMeaning}>{meaningOf(current)}</div>
+                  <input
+                    key={current.id}
+                    value={typedAnswer}
+                    onChange={(e) => setTypedAnswer(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        submitTyping();
+                      }
+                    }}
+                    style={{
+                      ...styles.typingInput,
+                      borderColor: typingFeedback === "wrong" ? SEAL : "#333B49",
+                    }}
+                    placeholder={t("typingPlaceholder")}
+                    autoFocus
+                  />
+                  {typingFeedback === "wrong" && <div style={styles.wrongFeedback}>{t("wrongTryAgain")}</div>}
+                  {attemptMistakes > 0 && (
+                    <div style={styles.hintText}>
+                      {t("romanizationHintLabel")}: {current.romanization}
+                    </div>
+                  )}
+                  <button className="kv-btn" style={styles.submitBtn} onClick={submitTyping}>
+                    {t("checkBtn")}
+                  </button>
+                  <button
+                    className="kv-btn"
+                    style={styles.speakBtnInline}
+                    onClick={() => speak(current.hangul)}
+                    aria-label={t("speakWord")}
+                  >
+                    <Volume2 size={16} /> {t("speakWord")}
+                  </button>
+                </div>
+              )}
+
+              {studyMode === "quiz" && (
+                <div style={styles.practiceWrap}>
+                  {marks[current.id] && (
+                    <div style={styles.reviewedTagStatic}>
+                      {marks[current.id] === "know" ? t("alreadyKnownTag") : t("markedReviewTag")}
+                    </div>
+                  )}
+                  <button
+                    className="kv-btn"
+                    style={styles.speakBtnInline}
+                    onClick={() => speak(current.hangul)}
+                    aria-label={t("speakWord")}
+                  >
+                    <Volume2 size={16} />
+                  </button>
+                  <div style={styles.hangul}>{current.hangul}</div>
+                  <div style={styles.romanization}>{current.romanization}</div>
+                  <div style={styles.practicePrompt}>{t("quizPrompt")}</div>
+                  <div style={styles.quizOptionsWrap}>
+                    {quizOptions.map((opt) => {
+                      const isWrong = quizWrongIds.has(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          disabled={isWrong}
+                          className="kv-btn"
+                          onClick={() => selectQuizOption(opt)}
+                          style={{ ...styles.quizOptionBtn, ...(isWrong ? styles.quizOptionWrong : {}) }}
+                        >
+                          {opt.text}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div style={styles.navRow}>
+                <button
+                  className="kv-btn"
+                  style={{ ...styles.navArrowBtn, opacity: position === 0 ? 0.35 : 1 }}
+                  onClick={goPrev}
+                  disabled={position === 0}
+                >
+                  {t("prevBtn")}
+                </button>
+                <div style={styles.queueHint}>
+                  {position + 1} / {roundTotal}
+                </div>
+                <button className="kv-btn" style={styles.navArrowBtn} onClick={goNext}>
+                  {t("nextBtn")}
+                </button>
+              </div>
+              <div style={styles.navSubHint}>{t("navSubHint")}</div>
+
+              {studyMode === "flashcard" && (
+                <div style={styles.actionRow}>
+                  <button className="kv-btn" style={styles.btnReview} onClick={() => mark("review")}>
+                    {t("reviewBtn")}
+                  </button>
+                  <button className="kv-btn" style={styles.btnKnow} onClick={() => mark("know")}>
+                    {t("knowBtn")}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {view === "browse" && (
+        <div style={{ ...styles.body, ...styles.browseBody }} className="kv-scroll">
+          {allCategories.map((c) => {
+            const words = allWords.filter((w) => w.category === c.id);
+            if (!words.length) return null;
+            return (
+              <div key={c.id} style={styles.browseGroup}>
+                <div style={styles.browseGroupTitle}>
+                  {c.label} <span style={styles.browseGroupSub}>{catSub(c.id)}</span>
+                </div>
+                {words.map((w) => {
+                  const st = progress[w.id]?.status;
+                  return (
+                    <div key={w.id} style={styles.browseRow}>
+                      <button
+                        className="kv-btn"
+                        style={styles.rowSpeakBtn}
+                        onClick={() => speak(w.hangul)}
+                        aria-label="발음 듣기"
+                      >
+                        <Volume2 size={14} />
+                      </button>
+                      <div style={styles.browseHangul}>{w.hangul}</div>
+                      <div style={styles.browseMeaning}>{meaningOf(w)}</div>
+                      <div
+                        style={{
+                          ...styles.browseStatus,
+                          color: st === "know" ? "#7FA189" : st === "review" ? "#A8412F" : "#5B6472",
+                        }}
+                      >
+                        {st === "know" ? t("knownLabel") : st === "review" ? t("reviewLabel") : t("newLabel")}
+                        {progress[w.id]?.mistakes > 0 && (
+                          <div style={styles.browseMistake}>{t("mistakesBadge")(progress[w.id].mistakes)}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "add" && (
+        <div style={{ ...styles.body, ...styles.browseBody }} className="kv-scroll">
+          <form onSubmit={submitWord} style={styles.form}>
+            <label style={styles.label}>{t("formCategory")}</label>
+            <select
+              value={form.category}
+              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              style={styles.input}
+            >
+              {allCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label} — {catSub(c.id)}
+                </option>
+              ))}
+              <option value="__new__">{t("formNewCategoryOption")}</option>
+            </select>
+
+            {form.category === "__new__" && (
+              <>
+                <label style={styles.label}>{t("formNewCategoryLabel")}</label>
+                <input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  style={styles.input}
+                  placeholder={t("formNewCategoryPlaceholder")}
+                />
+              </>
+            )}
+
+            <label style={styles.label}>{t("formHangul")}</label>
+            <input
+              value={form.hangul}
+              onChange={(e) => setForm((f) => ({ ...f, hangul: e.target.value }))}
+              style={styles.input}
+              placeholder="예: 아쉽다"
+            />
+
+            <label style={styles.label}>{t("formRoman")}</label>
+            <input
+              value={form.romanization}
+              onChange={(e) => setForm((f) => ({ ...f, romanization: e.target.value }))}
+              style={styles.input}
+              placeholder="예: aswipda"
+            />
+
+            <label style={styles.label}>{t("formMeaningVi")}</label>
+            <input
+              value={form.meaning}
+              onChange={(e) => setForm((f) => ({ ...f, meaning: e.target.value }))}
+              style={styles.input}
+              placeholder="예: tiếc nuối"
+            />
+
+            <label style={styles.label}>{t("formMeaningEn")}</label>
+            <input
+              value={form.meaningEn}
+              onChange={(e) => setForm((f) => ({ ...f, meaningEn: e.target.value }))}
+              style={styles.input}
+              placeholder="e.g. to feel regretful"
+            />
+
+            <label style={styles.label}>{t("formExample")}</label>
+            <input
+              value={form.example}
+              onChange={(e) => setForm((f) => ({ ...f, example: e.target.value }))}
+              style={styles.input}
+              placeholder="예문을 입력하세요"
+            />
+
+            <label style={styles.label}>{t("formExampleMeaningVi")}</label>
+            <input
+              value={form.exampleMeaning}
+              onChange={(e) => setForm((f) => ({ ...f, exampleMeaning: e.target.value }))}
+              style={styles.input}
+              placeholder="예문 번역 (tiếng Việt)"
+            />
+
+            <label style={styles.label}>{t("formExampleMeaningEn")}</label>
+            <input
+              value={form.exampleMeaningEn}
+              onChange={(e) => setForm((f) => ({ ...f, exampleMeaningEn: e.target.value }))}
+              style={styles.input}
+              placeholder="Example translation (English)"
+            />
+
+            <button type="submit" className="kv-btn" style={styles.submitBtn}>
+              {t("submitBtn")}
+            </button>
+          </form>
+          {customWords.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <div style={styles.browseGroupTitle}>{t("myWordsTitle")}</div>
+              {customWords.map((w) => (
+                <div key={w.id} style={styles.browseRow}>
+                  <div style={styles.browseHangul}>{w.hangul}</div>
+                  <div style={styles.browseMeaning}>{meaningOf(w)}</div>
+                  <div style={styles.browseStatus}>{catLabel(w.category)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {toast && <div style={styles.toast}>{toast}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Styles — hanji paper & ink-stamp theme
+// ---------------------------------------------------------------------------
+const INK_BG = "#1C2128";
+const PANEL = "#242A33";
+const PAPER = "#F0E9D8";
+const INK = "#22252A";
+const CELADON = "#7FA189";
+const SEAL = "#A8412F";
+const GOLD = "#C9A24B";
+const MUTE = "#8A93A3";
+
+const styles = {
+  app: {
+    display: "flex",
+    flexDirection: "column",
+    minHeight: "100%",
+    background: INK_BG,
+    fontFamily: "'Noto Sans KR', sans-serif",
+    color: PAPER,
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    padding: "20px 20px 12px",
+  },
+  brand: {
+    fontFamily: "'Noto Serif KR', serif",
+    fontWeight: 700,
+    fontSize: 26,
+    letterSpacing: "0.02em",
+  },
+  brandSub: { fontSize: 12, color: MUTE, marginTop: 2 },
+  headerRight: { display: "flex", alignItems: "center", gap: 14 },
+  langToggle: {
+    display: "flex",
+    border: "1px solid #333B49",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  langBtn: {
+    border: "none",
+    padding: "5px 11px",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+    letterSpacing: "0.03em",
+  },
+  streakBox: { textAlign: "right" },
+  streakNum: { fontFamily: "'Noto Serif KR', serif", fontSize: 22, color: GOLD, lineHeight: 1 },
+  streakLabel: { fontSize: 11, color: MUTE, marginTop: 2 },
+  nav: {
+    display: "flex",
+    gap: 20,
+    padding: "0 20px",
+    borderBottom: "1px solid #2E3542",
+  },
+  navBtn: {
+    background: "none",
+    border: "none",
+    fontSize: 14,
+    fontWeight: 500,
+    padding: "10px 2px",
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  body: { padding: "18px 20px 28px", display: "flex", flexDirection: "column", alignItems: "center", flex: 1 },
+  catRow: {
+    display: "flex",
+    gap: 8,
+    overflowX: "auto",
+    width: "100%",
+    paddingBottom: 6,
+    marginBottom: 22,
+  },
+  catChip: {
+    whiteSpace: "nowrap",
+    background: PANEL,
+    border: "1px solid #333B49",
+    color: MUTE,
+    borderRadius: 999,
+    padding: "6px 14px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  catChipActive: { color: PAPER, borderColor: GOLD },
+  folderGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+    gap: 12,
+    width: "100%",
+  },
+  folderCard: {
+    background: PANEL,
+    border: "1px solid #333B49",
+    borderRadius: 10,
+    padding: "18px 14px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
+    cursor: "pointer",
+    gap: 4,
+  },
+  folderIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    background: INK_BG,
+    color: GOLD,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "'Noto Serif KR', serif",
+    fontWeight: 700,
+    fontSize: 18,
+    marginBottom: 6,
+  },
+  folderLabel: { fontSize: 13, fontWeight: 600, color: PAPER, lineHeight: 1.3 },
+  folderSubKorean: { fontSize: 11, color: MUTE },
+  folderCount: { fontSize: 11, color: GOLD, marginTop: 4 },
+  catHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+    width: "100%",
+  },
+  backToFoldersBtn: {
+    background: "transparent",
+    border: "1px solid #333B49",
+    color: MUTE,
+    borderRadius: 999,
+    padding: "6px 14px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+    whiteSpace: "nowrap",
+  },
+  catHeaderTitle: {
+    fontFamily: "'Noto Serif KR', serif",
+    fontWeight: 700,
+    fontSize: 16,
+    color: PAPER,
+  },
+  cardWrap: { perspective: 1200, width: "100%", maxWidth: 360, marginTop: 8 },
+  card: {
+    position: "relative",
+    width: "100%",
+    height: 320,
+    transformStyle: "preserve-3d",
+    transition: "transform 0.45s cubic-bezier(.4,.2,.2,1)",
+    cursor: "pointer",
+  },
+  cardFace: {
+    position: "absolute",
+    inset: 0,
+    background: PAPER,
+    color: INK,
+    borderRadius: 6,
+    boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 28,
+    textAlign: "center",
+  },
+  cardBack: { transform: "rotateY(180deg)" },
+  seal: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 4,
+    background: SEAL,
+    color: PAPER,
+    fontFamily: "'Noto Serif KR', serif",
+    fontSize: 13,
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hangul: { fontFamily: "'Noto Serif KR', serif", fontWeight: 700, fontSize: 44, lineHeight: 1.2 },
+  romanization: { marginTop: 10, fontSize: 14, color: "#6B6455" },
+  tapHint: { position: "absolute", bottom: 18, fontSize: 11, color: "#9A927E" },
+  speakBtn: {
+    position: "absolute",
+    top: 16,
+    left: 16,
+    width: 34,
+    height: 34,
+    borderRadius: "50%",
+    background: "transparent",
+    border: `1px solid #C7BFA9`,
+    color: INK,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  rowSpeakBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: "50%",
+    background: "transparent",
+    border: "1px solid #3A4150",
+    color: MUTE,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  meaning: { fontFamily: "'Noto Serif KR', serif", fontSize: 22, fontWeight: 700, marginBottom: 18 },
+  exampleKo: { fontSize: 15, lineHeight: 1.6 },
+  exampleVi: { fontSize: 13, color: "#6B6455", marginTop: 8, fontStyle: "italic" },
+  actionRow: { display: "flex", gap: 12, marginTop: 24, width: "100%", maxWidth: 360 },
+  btnReview: {
+    flex: 1,
+    background: "transparent",
+    border: `1px solid ${SEAL}`,
+    color: SEAL,
+    borderRadius: 6,
+    padding: "12px 0",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  btnKnow: {
+    flex: 1,
+    background: CELADON,
+    border: `1px solid ${CELADON}`,
+    color: "#132019",
+    borderRadius: 6,
+    padding: "12px 0",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  queueHint: { fontSize: 12, color: MUTE },
+  navRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    maxWidth: 360,
+    marginTop: 18,
+  },
+  navArrowBtn: {
+    background: "transparent",
+    border: "1px solid #333B49",
+    color: PAPER,
+    borderRadius: 6,
+    padding: "8px 14px",
+    fontSize: 13,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  doneWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
+    maxWidth: 320,
+    marginTop: 48,
+  },
+  doneEmoji: { fontSize: 48, marginBottom: 12 },
+  doneTitle: { fontFamily: "'Noto Serif KR', serif", fontWeight: 700, fontSize: 22, marginBottom: 10, color: GOLD },
+  doneText: { fontSize: 14, color: "#C7CDD8", lineHeight: 1.6 },
+  doneActions: { display: "flex", flexDirection: "column", gap: 10, marginTop: 26, width: "100%" },
+  navSubHint: { fontSize: 11, color: "#5B6472", marginTop: 8, textAlign: "center", maxWidth: 300 },
+  reviewedTag: {
+    position: "absolute",
+    top: 58,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 11,
+    color: "#8A7F63",
+  },
+  reviewedTagStatic: { fontSize: 11, color: GOLD, marginBottom: 6 },
+  modeRow: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 16,
+    background: PANEL,
+    borderRadius: 999,
+    padding: 4,
+  },
+  modeBtn: {
+    flex: 1,
+    background: "transparent",
+    border: "none",
+    borderRadius: 999,
+    padding: "8px 0",
+    fontSize: 12,
+    fontWeight: 600,
+    color: MUTE,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  modeBtnActive: { background: GOLD, color: "#22252A" },
+  mistakeBadge: {
+    fontSize: 11,
+    color: SEAL,
+    border: `1px solid ${SEAL}`,
+    borderRadius: 999,
+    padding: "3px 10px",
+    marginBottom: 12,
+  },
+  practiceWrap: {
+    width: "100%",
+    maxWidth: 360,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
+    background: PANEL,
+    border: "1px solid #333B49",
+    borderRadius: 8,
+    padding: "28px 22px",
+  },
+  practicePrompt: { fontSize: 13, color: MUTE, marginBottom: 8 },
+  practiceMeaning: {
+    fontFamily: "'Noto Serif KR', serif",
+    fontWeight: 700,
+    fontSize: 20,
+    marginBottom: 20,
+    color: PAPER,
+  },
+  typingInput: {
+    width: "100%",
+    background: INK_BG,
+    border: "1px solid #333B49",
+    borderRadius: 6,
+    padding: "12px 14px",
+    color: PAPER,
+    fontSize: 18,
+    fontFamily: "'Noto Serif KR', serif",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  wrongFeedback: { fontSize: 13, color: SEAL, fontWeight: 600, marginBottom: 8 },
+  hintText: { fontSize: 12, color: GOLD, marginBottom: 14 },
+  speakBtnInline: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    background: "transparent",
+    border: "1px solid #333B49",
+    color: MUTE,
+    borderRadius: 999,
+    padding: "6px 14px",
+    fontSize: 12,
+    cursor: "pointer",
+    marginTop: 12,
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  quizOptionsWrap: { display: "flex", flexDirection: "column", gap: 10, width: "100%", marginTop: 16 },
+  quizOptionBtn: {
+    background: INK_BG,
+    border: "1px solid #333B49",
+    color: PAPER,
+    borderRadius: 6,
+    padding: "12px 14px",
+    fontSize: 14,
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  quizOptionWrong: { borderColor: SEAL, color: "#C98A7C", opacity: 0.6 },
+  restartBtn: {
+    background: CELADON,
+    border: "none",
+    borderRadius: 6,
+    padding: "12px 22px",
+    color: "#132019",
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  undoBtn: {
+    marginTop: 14,
+    background: "transparent",
+    border: "none",
+    color: GOLD,
+    fontSize: 13,
+    cursor: "pointer",
+    textDecoration: "underline",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  empty: { color: MUTE, marginTop: 40, textAlign: "center", maxWidth: 280, fontSize: 14 },
+  browseBody: { alignItems: "stretch", width: "100%" },
+  browseGroup: { marginBottom: 22 },
+  browseGroupTitle: {
+    fontFamily: "'Noto Serif KR', serif",
+    fontWeight: 700,
+    fontSize: 16,
+    marginBottom: 8,
+    color: GOLD,
+  },
+  browseGroupSub: { fontFamily: "'Noto Sans KR', sans-serif", fontWeight: 400, fontSize: 11, color: MUTE, marginLeft: 6 },
+  browseRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 10px",
+    borderBottom: "1px solid #2A303B",
+    fontSize: 13,
+  },
+  browseHangul: { fontFamily: "'Noto Serif KR', serif", fontWeight: 700, minWidth: 88 },
+  browseMeaning: { flex: 1, color: "#C7CDD8" },
+  browseStatus: { fontSize: 11, minWidth: 60, textAlign: "right" },
+  browseMistake: { fontSize: 10, color: SEAL, marginTop: 2 },
+  form: { display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 },
+  label: { fontSize: 12, color: MUTE, marginTop: 10 },
+  input: {
+    background: PANEL,
+    border: "1px solid #333B49",
+    borderRadius: 6,
+    padding: "10px 12px",
+    color: PAPER,
+    fontSize: 14,
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  submitBtn: {
+    marginTop: 18,
+    background: GOLD,
+    border: "none",
+    borderRadius: 6,
+    padding: "12px 0",
+    color: "#22252A",
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans KR', sans-serif",
+  },
+  toast: {
+    position: "fixed",
+    bottom: 24,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: PANEL,
+    color: PAPER,
+    padding: "8px 18px",
+    borderRadius: 999,
+    fontSize: 13,
+    border: "1px solid #333B49",
+  },
+};
+
+const rootEl = document.getElementById("root");
+ReactDOM.createRoot(rootEl).render(<KoreanVocabApp />);
+</script>
+</body></html>
